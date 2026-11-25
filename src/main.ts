@@ -82,8 +82,11 @@ export default defineAgent({
         },
         realtimeInputConfig: {
           automaticActivityDetection: {
-            silenceDurationMs: 400,
-            prefixPaddingMs: 120,
+            // Prevent mic echo/breathing from falsely cutting off Sarah mid-confirmation
+            startOfSpeechSensitivity: 'START_SENSITIVITY_LOW' as never,
+            endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH' as never,
+            silenceDurationMs: 450,
+            prefixPaddingMs: 250,
           },
         },
       }),
@@ -105,6 +108,7 @@ export default defineAgent({
     let sessionActive = true;
     let consecutiveRecoveries = 0;
     let isRecoverySpeech = false;
+    let isAgentSpeaking = false;
     let spokeSinceSpeechCreated = false;
     let toolRanSinceSpeechCreated = false;
 
@@ -119,7 +123,8 @@ export default defineAgent({
       clearNoResponseTimer();
       noResponseTimer = setTimeout(() => {
         noResponseTimer = null;
-        if (!sessionActive) return;
+        // NEVER interrupt Sarah if she is actively speaking (prevents mid-confirmation cutoffs)
+        if (!sessionActive || isAgentSpeaking) return;
         if (consecutiveRecoveries >= 2) {
           logger.warn('voice.turn.no_response_recovery_capped', {
             callId: sessionContext.callId ?? 'pending',
@@ -142,14 +147,16 @@ export default defineAgent({
           // Ignore if nothing to interrupt
         }
         setTimeout(() => {
-          if (!sessionActive) return;
+          if (!sessionActive || isAgentSpeaking) return;
           isRecoverySpeech = true;
           try {
             session.generateReply({
               instructions:
                 reason === 'silent_after_tool' || reason === 'silent_after_thinking'
-                  ? 'The last action just completed. Immediately confirm the result warmly to the caller in 1-2 short sentences (such as confirming their booked appointment and confirmation email) and ask if they need anything else.'
-                  : 'Politely tell the caller in one short sentence: "Sorry, I didn\'t quite catch that. Could you please repeat?"',
+                  ? 'The last action just completed. Immediately confirm the result warmly to the caller in 1-2 clear, steady sentences (mentioning their confirmed appointment, email, and WhatsApp confirmation if booked) and ask if they need anything else.'
+                  : reason === 'waiting_followup'
+                    ? 'Briefly reassure the caller in one warm, natural sentence while you finish checking (e.g. "I\'m still with you—just finishing up that check for you now.").'
+                    : 'Politely tell the caller in one short sentence: "Sorry, I didn\'t quite catch that. Could you please repeat?"',
             });
           } catch {
             isRecoverySpeech = false;
@@ -165,16 +172,17 @@ export default defineAgent({
       } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         lastUserSpeechEndAt = performance.now();
         consecutiveRecoveries = 0;
-        // Give Gemini up to 11s over international Wi-Fi so we NEVER kill an in-flight tool call
-        scheduleNoResponseRecovery(11_000, 'no_speech_after_user');
+        // On LiveKit Cloud (us-east), if silence lasts 7s after caller stops speaking,
+        // send a warm follow-up so the caller never sits in dead air
+        scheduleNoResponseRecovery(7000, 'no_speech_after_user');
       }
     });
 
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
       toolRanSinceSpeechCreated = true;
-      // Tool already completed & returned — safe to force-unblock if Gemini stalls silently for 6s
+      // Tool already completed & returned — immediately nudge after 3.5s if Gemini stalls silently
       consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(6000, 'silent_after_tool');
+      scheduleNoResponseRecovery(3500, 'silent_after_tool');
     });
 
     session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
@@ -201,14 +209,15 @@ export default defineAgent({
 
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       const now = performance.now();
+      isAgentSpeaking = ev.newState === 'speaking';
       if (ev.newState === 'speaking') {
         spokeSinceSpeechCreated = true;
         consecutiveRecoveries = 0;
         isRecoverySpeech = false;
         clearNoResponseTimer();
       } else if (ev.oldState === 'thinking' && ev.newState === 'listening') {
-        // Agent finished thinking without producing audio — recover after 4s
-        scheduleNoResponseRecovery(4000, 'silent_after_thinking');
+        // Agent finished thinking without producing audio — recover after 3s
+        scheduleNoResponseRecovery(3000, 'silent_after_thinking');
       }
 
       if (ev.newState === 'thinking') {
