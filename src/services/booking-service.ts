@@ -190,38 +190,71 @@ export class BookingService {
     const calendarId = business.googleCalendarId ?? getAppConfig().calendar.calendarId;
 
     const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
-    const notifyTasks: Array<Promise<unknown>> = [];
+    let emailResult: unknown = { skipped: true };
+    let whatsappResult: unknown = { skipped: true };
 
-    if (!isTestEnv && reservation.appointment.customerEmail) {
-      notifyTasks.push(
-        sendAppointmentConfirmationEmail({
-          toEmail: reservation.appointment.customerEmail,
-          businessName: business.name,
-          businessLocation: business.location,
-          booking: reservation.appointment,
-          isUpdate: false,
-        }),
-      );
-    }
+    if (!isTestEnv) {
+      const emailPromise = reservation.appointment.customerEmail
+        ? sendAppointmentConfirmationEmail({
+            toEmail: reservation.appointment.customerEmail,
+            businessName: business.name,
+            businessLocation: business.location,
+            booking: reservation.appointment,
+            isUpdate: false,
+          }).then((r) => {
+            emailResult = r;
+          })
+        : Promise.resolve();
 
-    if (!isTestEnv && reservation.appointment.phoneE164) {
-      notifyTasks.push(
-        sendAppointmentConfirmationWhatsApp({
-          toPhone: reservation.appointment.phoneE164,
-          businessName: business.name,
-          businessLocation: business.location,
-          booking: reservation.appointment,
-          isUpdate: false,
-        }),
-      );
-    }
+      const whatsappPromise = reservation.appointment.phoneE164
+        ? sendAppointmentConfirmationWhatsApp({
+            toPhone: reservation.appointment.phoneE164,
+            businessName: business.name,
+            businessLocation: business.location,
+            booking: reservation.appointment,
+            isUpdate: false,
+          }).then((r) => {
+            whatsappResult = r;
+          })
+        : Promise.resolve();
 
-    if (notifyTasks.length > 0) {
-      // Wait up to 4s in parallel so cloud workers flush Email + WhatsApp before returning
+      // Wait up to 6s in parallel so cloud workers flush Email + WhatsApp before returning
       await Promise.race([
-        Promise.allSettled(notifyTasks),
-        new Promise((resolve) => setTimeout(resolve, 4000)),
+        Promise.allSettled([emailPromise, whatsappPromise]),
+        new Promise((resolve) => setTimeout(resolve, 6000)),
       ]);
+
+      // Persist notification delivery result to audit_logs for cloud observability
+      if (getAppConfig().database.isPostgresConfigured) {
+        void (async () => {
+          try {
+            const { getDbPool } = await import('../db/client.ts');
+            await getDbPool().query(
+              `INSERT INTO aibitsol.audit_logs (business_id, actor_type, action, entity_type, entity_id, changes_json)
+               VALUES ($1, 'agent', 'booking.notifications', 'appointment', $2, $3::jsonb)`,
+              [
+                context.businessId,
+                reservation.appointment.id,
+                JSON.stringify({
+                  toEmail: reservation.appointment.customerEmail ?? null,
+                  toPhone: reservation.appointment.phoneE164 ?? null,
+                  emailResult,
+                  whatsappResult,
+                  env: {
+                    hasSmtpUser: Boolean(process.env.SMTP_USER?.trim()),
+                    hasSmtpPass: Boolean(process.env.SMTP_PASS?.trim()),
+                    hasWaPhoneId: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID?.trim()),
+                    hasWaToken: Boolean(process.env.WHATSAPP_ACCESS_TOKEN?.trim()),
+                    waTokenLen: process.env.WHATSAPP_ACCESS_TOKEN?.trim().length ?? 0,
+                  },
+                }),
+              ],
+            );
+          } catch {
+            // Non-fatal observability write
+          }
+        })();
+      }
     }
 
     if (!calendarId || !this.calendarAdapter.isConfigured(calendarId)) {
