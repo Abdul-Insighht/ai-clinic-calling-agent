@@ -82,11 +82,8 @@ export default defineAgent({
         },
         realtimeInputConfig: {
           automaticActivityDetection: {
-            // Prevent mic echo/breathing from falsely cutting off Sarah mid-confirmation
-            startOfSpeechSensitivity: 'START_SENSITIVITY_LOW' as never,
-            endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH' as never,
-            silenceDurationMs: 450,
-            prefixPaddingMs: 250,
+            silenceDurationMs: 400,
+            prefixPaddingMs: 120,
           },
         },
       }),
@@ -105,6 +102,7 @@ export default defineAgent({
     let lastUserSpeechEndAt: number | null = null;
     let lastAgentThinkingAt: number | null = null;
     let noResponseTimer: ReturnType<typeof setTimeout> | null = null;
+    let waitFollowUpTimer: ReturnType<typeof setTimeout> | null = null;
     let sessionActive = true;
     let consecutiveRecoveries = 0;
     let isRecoverySpeech = false;
@@ -112,17 +110,51 @@ export default defineAgent({
     let spokeSinceSpeechCreated = false;
     let toolRanSinceSpeechCreated = false;
 
+    const clearWaitFollowUpTimer = () => {
+      if (waitFollowUpTimer) {
+        clearTimeout(waitFollowUpTimer);
+        waitFollowUpTimer = null;
+      }
+    };
+
     const clearNoResponseTimer = () => {
+      clearWaitFollowUpTimer();
       if (noResponseTimer) {
         clearTimeout(noResponseTimer);
         noResponseTimer = null;
       }
     };
 
+    // Gentle non-interrupting follow-up message when a response/tool takes >3.5s
+    // (Never calls session.interrupt so in-flight tool calls finish cleanly!)
+    const scheduleWaitFollowUp = (delayMs: number) => {
+      clearWaitFollowUpTimer();
+      waitFollowUpTimer = setTimeout(() => {
+        waitFollowUpTimer = null;
+        if (!sessionActive || isAgentSpeaking) return;
+        logger.info('voice.turn.wait_followup', {
+          callId: sessionContext.callId ?? 'pending',
+          thresholdMs: delayMs,
+        });
+        try {
+          session.generateReply({
+            instructions:
+              'Speak one very brief, warm reassurance (4-7 words) while you finish checking, like "One moment, checking that for you now." or "Just a second, almost got that ready."',
+          });
+        } catch {
+          // Ignore if session is busy
+        }
+      }, delayMs);
+    };
+
     const scheduleNoResponseRecovery = (delayMs: number, reason: string) => {
-      clearNoResponseTimer();
+      if (noResponseTimer) {
+        clearTimeout(noResponseTimer);
+        noResponseTimer = null;
+      }
       noResponseTimer = setTimeout(() => {
         noResponseTimer = null;
+        clearWaitFollowUpTimer();
         // NEVER interrupt Sarah if she is actively speaking (prevents mid-confirmation cutoffs)
         if (!sessionActive || isAgentSpeaking) return;
         if (consecutiveRecoveries >= 2) {
@@ -154,9 +186,7 @@ export default defineAgent({
               instructions:
                 reason === 'silent_after_tool' || reason === 'silent_after_thinking'
                   ? 'The last action just completed. Immediately confirm the result warmly to the caller in 1-2 clear, steady sentences (mentioning their confirmed appointment, email, and WhatsApp confirmation if booked) and ask if they need anything else.'
-                  : reason === 'waiting_followup'
-                    ? 'Briefly reassure the caller in one warm, natural sentence while you finish checking (e.g. "I\'m still with you—just finishing up that check for you now.").'
-                    : 'Politely tell the caller in one short sentence: "Sorry, I didn\'t quite catch that. Could you please repeat?"',
+                  : 'Politely tell the caller in one short sentence: "Sorry, I didn\'t quite catch that. Could you please repeat?"',
             });
           } catch {
             isRecoverySpeech = false;
@@ -172,17 +202,19 @@ export default defineAgent({
       } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         lastUserSpeechEndAt = performance.now();
         consecutiveRecoveries = 0;
-        // On LiveKit Cloud (us-east), if silence lasts 7s after caller stops speaking,
-        // send a warm follow-up so the caller never sits in dead air
-        scheduleNoResponseRecovery(7000, 'no_speech_after_user');
+        // Stage 1 (3.5s): Gentle non-interrupting follow-up if response/tool is still working
+        scheduleWaitFollowUp(3500);
+        // Stage 2 (9.5s): Full recovery if completely stalled
+        scheduleNoResponseRecovery(9500, 'no_speech_after_user');
       }
     });
 
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
       toolRanSinceSpeechCreated = true;
-      // Tool already completed & returned — immediately nudge after 3.5s if Gemini stalls silently
+      clearWaitFollowUpTimer();
+      // Tool already completed & returned — immediately nudge after 2.5s if Gemini stalls silently
       consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(3500, 'silent_after_tool');
+      scheduleNoResponseRecovery(2500, 'silent_after_tool');
     });
 
     session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
