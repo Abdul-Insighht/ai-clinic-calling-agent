@@ -365,6 +365,8 @@ export function App() {
       }
       if (healthRes.status === 'fulfilled') {
         setHealthStatus(healthRes.value.status ?? 'ok');
+      } else if (bizRes.status === 'fulfilled' && apptsRes.status === 'fulfilled') {
+        setHealthStatus('ok');
       } else {
         setHealthStatus('degraded');
       }
@@ -717,9 +719,15 @@ export function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            <span className={`badge ${healthStatus === 'ok' ? 'badge-ok' : 'badge-danger'}`}>
-              <span className={`status-dot ${healthStatus === 'ok' ? '' : 'danger'}`} />
-              {healthStatus === 'ok' ? 'Live · Today' : 'Degraded'}
+            <span
+              className={`badge ${healthStatus === 'degraded' ? 'badge-danger' : 'badge-ok'}`}
+            >
+              <span className={`status-dot ${healthStatus === 'degraded' ? 'danger' : ''}`} />
+              {healthStatus === 'degraded'
+                ? 'Degraded'
+                : healthStatus === 'checking'
+                  ? 'Connecting...'
+                  : 'Live · Today'}
             </span>
             <button
               className="btn btn-secondary btn-sm"
