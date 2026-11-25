@@ -203,24 +203,23 @@ export default defineAgent({
       } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         lastUserSpeechEndAt = performance.now();
         consecutiveRecoveries = 0;
-        // Stage 1 (5s): Gentle non-interrupting follow-up ONLY if no speech has started yet
-        scheduleWaitFollowUp(5000);
-        // Stage 2 (10s): Full recovery if completely stalled
-        scheduleNoResponseRecovery(10_000, 'no_speech_after_user');
+        // Stage 1 (3s): Gentle non-interrupting follow-up if Sarah hasn't started speaking yet
+        // (Cancelled ONLY on AgentStateChanged('speaking'), NOT SpeechCreated, so tool waits get follow-ups!)
+        scheduleWaitFollowUp(3000);
+        // Stage 2 (9.5s): Full recovery if completely stalled
+        scheduleNoResponseRecovery(9500, 'no_speech_after_user');
       }
     });
 
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
       toolRanSinceSpeechCreated = true;
       clearWaitFollowUpTimer();
-      // Tool already completed & returned — immediately nudge after 3s if Gemini stalls silently
+      // Tool already completed & returned — immediately nudge after 2.5s if Gemini stalls silently
       consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(3000, 'silent_after_tool');
+      scheduleNoResponseRecovery(2500, 'silent_after_tool');
     });
 
     session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
-      // Cancel wait follow-up as soon as real speech is created so it NEVER collides mid-sentence!
-      clearWaitFollowUpTimer();
       const wasRecovery = isRecoverySpeech;
       isRecoverySpeech = false;
       spokeSinceSpeechCreated = false;
