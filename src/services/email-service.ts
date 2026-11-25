@@ -160,8 +160,9 @@ export async function sendAppointmentConfirmationEmail(
 
   const { subject, text, html } = buildConfirmationEmail(payload);
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
+  const rawFrom = process.env.EMAIL_FROM?.trim().replace(/^["']|["']$/g, '');
   const fromAddress =
-    process.env.EMAIL_FROM?.trim() ||
+    rawFrom ||
     (process.env.SMTP_USER ? `${payload.businessName} <${process.env.SMTP_USER.trim()}>` : 'VoxDesk AI <onboarding@resend.dev>');
 
   // 1. Prefer Resend if configured (production SaaS)
@@ -224,11 +225,52 @@ export async function sendAppointmentConfirmationEmail(
       isUpdate: Boolean(payload.isUpdate),
     });
     return { sent: true, provider: 'smtp' };
-  } catch (error) {
+  } catch (primaryError) {
+    // Cloud containers sometimes block port 465; automatically retry via port 587 STARTTLS
+    const host = process.env.SMTP_HOST?.trim() || 'smtp.gmail.com';
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS?.replace(/\s+/g, '').trim();
+    if (user && pass && (!process.env.SMTP_PORT || process.env.SMTP_PORT === '465')) {
+      try {
+        const { default: nodemailer } = await import('nodemailer');
+        const fallbackTransporter = nodemailer.createTransport({
+          host,
+          port: 587,
+          secure: false,
+          requireTLS: true,
+          auth: { user, pass },
+          connectionTimeout: 8000,
+          greetingTimeout: 8000,
+          socketTimeout: 10000,
+        });
+        await fallbackTransporter.sendMail({
+          from: fromAddress,
+          to: toEmail,
+          subject,
+          text,
+          html,
+        });
+        logger.info('email.confirmation.sent', {
+          provider: 'smtp',
+          port: 587,
+          bookingId: payload.booking.id,
+          isUpdate: Boolean(payload.isUpdate),
+        });
+        return { sent: true, provider: 'smtp' };
+      } catch (fallbackError) {
+        logger.error('email.confirmation.failed', {
+          provider: 'smtp',
+          bookingId: payload.booking.id,
+          primaryError,
+          fallbackError,
+        });
+        return { sent: false, provider: 'smtp' };
+      }
+    }
     logger.error('email.confirmation.failed', {
       provider: 'smtp',
       bookingId: payload.booking.id,
-      error,
+      error: primaryError,
     });
     return { sent: false, provider: 'smtp' };
   }

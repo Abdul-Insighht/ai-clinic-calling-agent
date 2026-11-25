@@ -189,24 +189,39 @@ export class BookingService {
     const business = await this.businessService.getBusinessProfile(context);
     const calendarId = business.googleCalendarId ?? getAppConfig().calendar.calendarId;
 
-    if (reservation.appointment.customerEmail) {
-      void sendAppointmentConfirmationEmail({
-        toEmail: reservation.appointment.customerEmail,
-        businessName: business.name,
-        businessLocation: business.location,
-        booking: reservation.appointment,
-        isUpdate: false,
-      });
+    const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
+    const notifyTasks: Array<Promise<unknown>> = [];
+
+    if (!isTestEnv && reservation.appointment.customerEmail) {
+      notifyTasks.push(
+        sendAppointmentConfirmationEmail({
+          toEmail: reservation.appointment.customerEmail,
+          businessName: business.name,
+          businessLocation: business.location,
+          booking: reservation.appointment,
+          isUpdate: false,
+        }),
+      );
     }
 
-    if (reservation.appointment.phoneE164) {
-      void sendAppointmentConfirmationWhatsApp({
-        toPhone: reservation.appointment.phoneE164,
-        businessName: business.name,
-        businessLocation: business.location,
-        booking: reservation.appointment,
-        isUpdate: false,
-      });
+    if (!isTestEnv && reservation.appointment.phoneE164) {
+      notifyTasks.push(
+        sendAppointmentConfirmationWhatsApp({
+          toPhone: reservation.appointment.phoneE164,
+          businessName: business.name,
+          businessLocation: business.location,
+          booking: reservation.appointment,
+          isUpdate: false,
+        }),
+      );
+    }
+
+    if (notifyTasks.length > 0) {
+      // Wait up to 4s in parallel so cloud workers flush Email + WhatsApp before returning
+      await Promise.race([
+        Promise.allSettled(notifyTasks),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
     }
 
     if (!calendarId || !this.calendarAdapter.isConfigured(calendarId)) {
