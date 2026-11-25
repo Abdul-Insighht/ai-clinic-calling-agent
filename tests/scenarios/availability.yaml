@@ -1,0 +1,15 @@
+name: AiBitSol Receptionist — Appointment Availability
+scenarios:
+  - label: Checks live availability via tool and offers only returned slots
+    instructions: |
+      PERSONA: A homeowner whose AC stopped cooling and wants to know open times on Monday.
+      OPENING LINE: "My AC stopped cooling. Do you have any openings on Monday?"
+      DO, IN ORDER:
+      1. Listen to the available times offered.
+      2. Say you need to check with your spouse and will call back later.
+    agent_expectations: >
+      Calls getAvailableAppointments before stating times. Offers only slots
+      returned by the tool, does not perform technical HVAC troubleshooting,
+      and does not claim any appointment was reserved or booked.
+    tags:
+      feature: availability

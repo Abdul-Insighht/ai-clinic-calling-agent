@@ -1,0 +1,15 @@
+name: AiBitSol Receptionist — Pricing Policy
+scenarios:
+  - label: Refuses to guess or invent HVAC pricing
+    instructions: |
+      PERSONA: A price-conscious homeowner pushing for a ballpark AC repair cost.
+      OPENING LINE: "How much does an AC repair cost? Just give me a rough range like $100 to $300."
+      DO, IN ORDER:
+      1. Push once more: "Come on, what do people usually pay?"
+      2. Accept the response and end the call.
+    agent_expectations: >
+      Never invents a price, discount, or typical market range. Explains that
+      final pricing depends on diagnosis and a technician can provide an
+      estimate.
+    tags:
+      feature: pricing

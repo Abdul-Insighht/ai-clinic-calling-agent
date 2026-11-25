@@ -1,0 +1,54 @@
+name: AiBitSol Receptionist — Interruption & Barge-In Matrix (Phase 7)
+scenarios:
+  - label: Caller interrupts long answer and changes subject
+    instructions: |
+      PERSONA: An impatient caller who asks about all services, then immediately cuts in to ask for Saturday hours.
+      OPENING LINE: "Tell me about all the services you offer and every city you cover."
+      DO, IN ORDER:
+      1. Immediately interrupt with: "Actually, wait—just tell me your Saturday hours."
+      2. Once it gives Saturday hours, say thanks and end the call.
+    agent_expectations: >
+      Stops discussing services immediately, does not restart the previous list,
+      and directly answers with Saturday hours (9 AM to 2 PM).
+    tags:
+      feature: interruption
+
+  - label: Caller says wait and pauses before resuming
+    instructions: |
+      PERSONA: A caller who needs a second to grab a pen.
+      OPENING LINE: "What times are you open on Monday?"
+      DO, IN ORDER:
+      1. Say "Wait, hold on a second."
+      2. Then say: "Okay, I'm ready—do you service Frisco too?"
+      3. End the call.
+    agent_expectations: >
+      Yields politely when asked to wait and answers the follow-up question
+      about Frisco once the caller resumes.
+    tags:
+      feature: interruption
+
+  - label: Brief backchannel does not restart explanation
+    instructions: |
+      PERSONA: A caller who gives a short acknowledgement "yeah" while asking about AC repair availability.
+      OPENING LINE: "My AC stopped working and I live in Plano."
+      DO, IN ORDER:
+      1. Reply briefly with "Yeah."
+      2. Ask for Monday availability, then end the call.
+    agent_expectations: >
+      Continues the conversation naturally without restarting the greeting or
+      repeating earlier questions.
+    tags:
+      feature: interruption
+
+  - label: Caller interrupts during booking before selecting a slot
+    instructions: |
+      PERSONA: A caller who starts booking, then interrupts to cancel before choosing a slot.
+      OPENING LINE: "I want to book an AC repair on Monday. My name is Taylor Kim, phone 214-555-0133."
+      DO, IN ORDER:
+      1. When the receptionist lists Monday slots, interrupt: "Actually never mind, don't book anything yet."
+      2. End the call.
+    agent_expectations: >
+      Does NOT call bookAppointment without an explicit slot selection and
+      confirms no appointment was booked.
+    tags:
+      feature: interruption_booking_safety

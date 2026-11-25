@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoxDesk AI — Voice Calling Command Center</title>
+    <script>
+      window.addEventListener('error', function (e) {
+        var el = document.getElementById('root');
+        if (el) {
+          var msg = e.error ? (e.error.stack || e.error.message || e.error) : (e.message || 'Script error');
+          el.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px;color:#fecaca;font-family:sans-serif">' +
+            '<div style="background:#131a2e;border:1px solid #ef4444;border-radius:12px;padding:24px;max-width:500px;width:100%">' +
+            '<h3 style="margin-top:0;color:#ef4444">Application Load Error</h3>' +
+            '<pre style="white-space:pre-wrap;font-size:13px;color:#fca5a5">' + msg + '</pre>' +
+            '<button onclick="window.location.reload(true)" style="background:#38bdf8;color:#061322;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600">Reload</button>' +
+            '</div></div>';
+        }
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var el = document.getElementById('root');
+        if (el) {
+          var msg = e.reason ? (e.reason.stack || e.reason.message || e.reason) : 'Promise rejection';
+          el.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px;color:#fecaca;font-family:sans-serif">' +
+            '<div style="background:#131a2e;border:1px solid #ef4444;border-radius:12px;padding:24px;max-width:500px;width:100%">' +
+            '<h3 style="margin-top:0;color:#ef4444">Unhandled Promise Rejection</h3>' +
+            '<pre style="white-space:pre-wrap;font-size:13px;color:#fca5a5">' + msg + '</pre>' +
+            '<button onclick="window.location.reload(true)" style="background:#38bdf8;color:#061322;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600">Reload</button>' +
+            '</div></div>';
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div style="min-height: 100vh; display: grid; place-items: center; color: #94a3b8; font-family: sans-serif;">
+        <div style="text-align: center; padding: 24px;">
+          <h2 style="color: #eef2ff; margin-bottom: 8px;">VoxDesk AI</h2>
+          <p>Loading application...</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

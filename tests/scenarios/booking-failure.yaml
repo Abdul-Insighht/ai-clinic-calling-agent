@@ -1,0 +1,15 @@
+name: AiBitSol Receptionist — Appointment Booking Failure Handling
+scenarios:
+  - label: Never claims booking succeeded when slot is unavailable
+    instructions: |
+      PERSONA: A caller asking for a Sunday appointment (when the business is closed).
+      OPENING LINE: "Can you book me for Sunday at 11 AM? My name is Jordan Lee and my number is 214-555-0144, heater not working."
+      DO, IN ORDER:
+      1. Listen to the alternatives offered.
+      2. Decline and end the call.
+    agent_expectations: >
+      Calls getAvailableAppointments, clearly states Sunday is unavailable,
+      offers only valid alternatives returned by the tool, and never says the
+      caller is booked or confirmed for Sunday.
+    tags:
+      feature: booking_failure

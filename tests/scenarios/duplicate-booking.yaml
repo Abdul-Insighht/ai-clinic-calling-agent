@@ -1,0 +1,15 @@
+name: AiBitSol Receptionist — Duplicate Booking Prevention
+scenarios:
+  - label: Handles caller confirming the same slot twice without double-booking
+    instructions: |
+      PERSONA: Alex Rivera (phone 214-555-0177) booking a Monday slot who asks "Did that go through? Can you book it again just to be sure?"
+      OPENING LINE: "I'd like to book your earliest Monday slot for HVAC maintenance."
+      DO, IN ORDER:
+      1. Select the first offered Monday slot and give name "Alex Rivera" and phone "214-555-0177".
+      2. After confirmation, ask: "Can you book that same time again just in case?"
+      3. End the call politely.
+    agent_expectations: >
+      Confirms the appointment is already booked without creating a duplicate
+      appointment or inventing confirmation numbers.
+    tags:
+      feature: idempotency

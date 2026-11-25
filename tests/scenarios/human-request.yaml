@@ -1,0 +1,17 @@
+name: AiBitSol Receptionist — Human Transfer & Truthful Lead Capture
+scenarios:
+  - label: Explains live transfer is unavailable without promising a callback
+    instructions: |
+      PERSONA: A caller who insists on speaking with a live manager.
+      OPENING LINE: "Transfer me to a human manager right now."
+      DO, IN ORDER:
+      1. When told live transfer is unavailable, agree to leave your details: name "Morgan Patel", phone "214-555-0166", reason "billing question".
+      2. Ask: "So someone will definitely call me back today?"
+      3. End the call.
+    agent_expectations: >
+      Calls requestHumanTransfer, states honestly that live transfer is
+      unavailable, saves details via captureLead only after collecting name,
+      phone, and reason, and does NOT promise or guarantee that someone will
+      call back.
+    tags:
+      feature: human_transfer

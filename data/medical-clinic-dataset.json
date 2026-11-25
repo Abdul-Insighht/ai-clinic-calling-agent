@@ -1,0 +1,501 @@
+{
+  "source": "Kaggle Medical Appointment No-Shows (KaggleV2-May-2016.csv — 110,527 real clinic rows)",
+  "generatedAt": "2026-11-25T02:06:58.067Z",
+  "business": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Vitória Family & Medical Clinic",
+    "receptionistName": "Sarah",
+    "description": "Vitória Family & Medical Clinic provides primary family healthcare, hypertension and diabetes management, pediatric checkups, prescription renewals, and urgent walk-in assessments.",
+    "location": "Vitória Medical Center",
+    "timezone": "Asia/Karachi",
+    "aiVoice": "Puck",
+    "defaultAppointmentDurationMinutes": 60,
+    "emergencyPolicy": "For medical emergencies such as severe chest pain, difficulty breathing, heavy bleeding, or loss of consciousness, instruct the caller to hang up and call local emergency services or go to the nearest emergency room immediately. Never provide medical diagnoses.",
+    "pricingPolicy": "Do not invent treatment prices. Explain that standard consultation fees are confirmed at reception and final costs depend on the doctor evaluation and any lab tests needed.",
+    "hours": [
+      {
+        "dayOfWeek": 0,
+        "openTime": null,
+        "closeTime": null,
+        "isClosed": true,
+        "displayLabel": "Closed"
+      },
+      {
+        "dayOfWeek": 1,
+        "openTime": "09:00:00",
+        "closeTime": "18:00:00",
+        "isClosed": false,
+        "displayLabel": "9 AM to 6 PM"
+      },
+      {
+        "dayOfWeek": 2,
+        "openTime": "09:00:00",
+        "closeTime": "18:00:00",
+        "isClosed": false,
+        "displayLabel": "9 AM to 6 PM"
+      },
+      {
+        "dayOfWeek": 3,
+        "openTime": "09:00:00",
+        "closeTime": "18:00:00",
+        "isClosed": false,
+        "displayLabel": "9 AM to 6 PM"
+      },
+      {
+        "dayOfWeek": 4,
+        "openTime": "09:00:00",
+        "closeTime": "18:00:00",
+        "isClosed": false,
+        "displayLabel": "9 AM to 6 PM"
+      },
+      {
+        "dayOfWeek": 5,
+        "openTime": "09:00:00",
+        "closeTime": "18:00:00",
+        "isClosed": false,
+        "displayLabel": "9 AM to 6 PM"
+      },
+      {
+        "dayOfWeek": 6,
+        "openTime": "09:00:00",
+        "closeTime": "14:00:00",
+        "isClosed": false,
+        "displayLabel": "9 AM to 2 PM"
+      }
+    ],
+    "services": [
+      {
+        "name": "General Medical Consultation",
+        "durationMinutes": 60
+      },
+      {
+        "name": "Hypertension & Blood Pressure Follow-Up",
+        "durationMinutes": 60
+      },
+      {
+        "name": "Diabetes Care & Blood Sugar Checkup",
+        "durationMinutes": 60
+      },
+      {
+        "name": "Pediatric & Child Health Checkup",
+        "durationMinutes": 60
+      },
+      {
+        "name": "Lab Work & Prescription Renewal",
+        "durationMinutes": 60
+      },
+      {
+        "name": "Urgent Walk-In Assessment",
+        "durationMinutes": 60
+      }
+    ],
+    "serviceAreas": [
+      "Maria Ortiz",
+      "Itararé",
+      "Tabuazeiro",
+      "Jardim Da Penha",
+      "Resistência",
+      "Jabour",
+      "Centro",
+      "Caratoíra"
+    ]
+  },
+  "stats": {
+    "totalCsvRowsScanned": 2500,
+    "importedAppointmentsCount": 30,
+    "confirmedCount": 23,
+    "cancelledNoShowCount": 7
+  },
+  "appointments": [
+    {
+      "kaggleAppointmentId": "5642903",
+      "customerName": "Patient #5642903",
+      "phoneE164": "+923005642903",
+      "customerEmail": null,
+      "address": "Jardim Da Penha, Vitória Clinic District",
+      "reason": "Hypertension & Blood Pressure Follow-Up",
+      "startsAt": "2026-11-25T05:00:00.000Z",
+      "endsAt": "2026-11-25T06:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642903"
+    },
+    {
+      "kaggleAppointmentId": "5642503",
+      "customerName": "Patient #5642503",
+      "phoneE164": "+923005642503",
+      "customerEmail": null,
+      "address": "Jardim Da Penha, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-25T07:00:00.000Z",
+      "endsAt": "2026-11-25T08:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642503"
+    },
+    {
+      "kaggleAppointmentId": "5642549",
+      "customerName": "Patient #5642549",
+      "phoneE164": "+923005642549",
+      "customerEmail": null,
+      "address": "Mata Da Praia, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-25T09:00:00.000Z",
+      "endsAt": "2026-11-25T10:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642549"
+    },
+    {
+      "kaggleAppointmentId": "5642828",
+      "customerName": "Patient #5642828",
+      "phoneE164": "+923005642828",
+      "customerEmail": null,
+      "address": "Pontal De Camburi, Vitória Clinic District",
+      "reason": "Pediatric & Child Health Checkup",
+      "startsAt": "2026-11-25T11:00:00.000Z",
+      "endsAt": "2026-11-25T12:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642828"
+    },
+    {
+      "kaggleAppointmentId": "5642494",
+      "customerName": "Patient #5642494",
+      "phoneE164": "+923005642494",
+      "customerEmail": null,
+      "address": "Jardim Da Penha, Vitória Clinic District",
+      "reason": "Diabetes & Hypertension Follow-Up",
+      "startsAt": "2026-11-25T12:00:00.000Z",
+      "endsAt": "2026-11-25T13:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642494"
+    },
+    {
+      "kaggleAppointmentId": "5626772",
+      "customerName": "Patient #5626772",
+      "phoneE164": "+923005626772",
+      "customerEmail": null,
+      "address": "República, Vitória Clinic District",
+      "reason": "Hypertension & Blood Pressure Follow-Up",
+      "startsAt": "2026-11-26T05:00:00.000Z",
+      "endsAt": "2026-11-26T06:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5626772"
+    },
+    {
+      "kaggleAppointmentId": "5630279",
+      "customerName": "Patient #5630279",
+      "phoneE164": "+923005630279",
+      "customerEmail": null,
+      "address": "Goiabeiras, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-26T07:00:00.000Z",
+      "endsAt": "2026-11-26T08:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5630279"
+    },
+    {
+      "kaggleAppointmentId": "5630575",
+      "customerName": "Patient #5630575",
+      "phoneE164": "+923005630575",
+      "customerEmail": null,
+      "address": "Goiabeiras, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-26T09:00:00.000Z",
+      "endsAt": "2026-11-26T10:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5630575"
+    },
+    {
+      "kaggleAppointmentId": "5638447",
+      "customerName": "Patient #5638447",
+      "phoneE164": "+923005638447",
+      "customerEmail": null,
+      "address": "Andorinhas, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-26T11:00:00.000Z",
+      "endsAt": "2026-11-26T12:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5638447"
+    },
+    {
+      "kaggleAppointmentId": "5629123",
+      "customerName": "Patient #5629123",
+      "phoneE164": "+923005629123",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-26T12:00:00.000Z",
+      "endsAt": "2026-11-26T13:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5629123"
+    },
+    {
+      "kaggleAppointmentId": "5630213",
+      "customerName": "Patient #5630213",
+      "phoneE164": "+923005630213",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-27T05:00:00.000Z",
+      "endsAt": "2026-11-27T06:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5630213"
+    },
+    {
+      "kaggleAppointmentId": "5620163",
+      "customerName": "Patient #5620163",
+      "phoneE164": "+923005620163",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-27T07:00:00.000Z",
+      "endsAt": "2026-11-27T08:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5620163"
+    },
+    {
+      "kaggleAppointmentId": "5634718",
+      "customerName": "Patient #5634718",
+      "phoneE164": "+923005634718",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-27T09:00:00.000Z",
+      "endsAt": "2026-11-27T10:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5634718"
+    },
+    {
+      "kaggleAppointmentId": "5636249",
+      "customerName": "Patient #5636249",
+      "phoneE164": "+923005636249",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-27T11:00:00.000Z",
+      "endsAt": "2026-11-27T12:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5636249"
+    },
+    {
+      "kaggleAppointmentId": "5633951",
+      "customerName": "Patient #5633951",
+      "phoneE164": "+923005633951",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-27T12:00:00.000Z",
+      "endsAt": "2026-11-27T13:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5633951"
+    },
+    {
+      "kaggleAppointmentId": "5620206",
+      "customerName": "Patient #5620206",
+      "phoneE164": "+923005620206",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-28T04:00:00.000Z",
+      "endsAt": "2026-11-28T05:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5620206"
+    },
+    {
+      "kaggleAppointmentId": "5633121",
+      "customerName": "Patient #5633121",
+      "phoneE164": "+923005633121",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-28T06:00:00.000Z",
+      "endsAt": "2026-11-28T07:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5633121"
+    },
+    {
+      "kaggleAppointmentId": "5633460",
+      "customerName": "Patient #5633460",
+      "phoneE164": "+923005633460",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-28T08:00:00.000Z",
+      "endsAt": "2026-11-28T09:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5633460"
+    },
+    {
+      "kaggleAppointmentId": "5621836",
+      "customerName": "Patient #5621836",
+      "phoneE164": "+923005621836",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-30T05:00:00.000Z",
+      "endsAt": "2026-11-30T06:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5621836"
+    },
+    {
+      "kaggleAppointmentId": "5640433",
+      "customerName": "Patient #5640433",
+      "phoneE164": "+923005640433",
+      "customerEmail": null,
+      "address": "Da Penha, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-30T07:00:00.000Z",
+      "endsAt": "2026-11-30T08:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5640433"
+    },
+    {
+      "kaggleAppointmentId": "5626083",
+      "customerName": "Patient #5626083",
+      "phoneE164": "+923005626083",
+      "customerEmail": null,
+      "address": "Nova Palestina, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-11-30T09:00:00.000Z",
+      "endsAt": "2026-11-30T10:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5626083"
+    },
+    {
+      "kaggleAppointmentId": "5628338",
+      "customerName": "Patient #5628338",
+      "phoneE164": "+923005628338",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "Pediatric & Child Health Checkup",
+      "startsAt": "2026-11-30T11:00:00.000Z",
+      "endsAt": "2026-11-30T12:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5628338"
+    },
+    {
+      "kaggleAppointmentId": "5616091",
+      "customerName": "Patient #5616091",
+      "phoneE164": "+923005616091",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "Pediatric & Child Health Checkup",
+      "startsAt": "2026-11-30T12:00:00.000Z",
+      "endsAt": "2026-11-30T13:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "cancelled",
+      "idempotencyKey": "kaggle:5616091"
+    },
+    {
+      "kaggleAppointmentId": "5634142",
+      "customerName": "Patient #5634142",
+      "phoneE164": "+923005634142",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-12-01T05:00:00.000Z",
+      "endsAt": "2026-12-01T06:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5634142"
+    },
+    {
+      "kaggleAppointmentId": "5641780",
+      "customerName": "Patient #5641780",
+      "phoneE164": "+923005641780",
+      "customerEmail": null,
+      "address": "Tabuazeiro, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-12-01T07:00:00.000Z",
+      "endsAt": "2026-12-01T08:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5641780"
+    },
+    {
+      "kaggleAppointmentId": "5624020",
+      "customerName": "Patient #5624020",
+      "phoneE164": "+923005624020",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "Hypertension & Blood Pressure Follow-Up",
+      "startsAt": "2026-12-01T09:00:00.000Z",
+      "endsAt": "2026-12-01T10:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5624020"
+    },
+    {
+      "kaggleAppointmentId": "5641781",
+      "customerName": "Patient #5641781",
+      "phoneE164": "+923005641781",
+      "customerEmail": null,
+      "address": "Bento Ferreira, Vitória Clinic District",
+      "reason": "Hypertension & Blood Pressure Follow-Up",
+      "startsAt": "2026-12-01T11:00:00.000Z",
+      "endsAt": "2026-12-01T12:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5641781"
+    },
+    {
+      "kaggleAppointmentId": "5628345",
+      "customerName": "Patient #5628345",
+      "phoneE164": "+923005628345",
+      "customerEmail": null,
+      "address": "Conquista, Vitória Clinic District",
+      "reason": "Pediatric & Child Health Checkup",
+      "startsAt": "2026-12-01T12:00:00.000Z",
+      "endsAt": "2026-12-01T13:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5628345"
+    },
+    {
+      "kaggleAppointmentId": "5642400",
+      "customerName": "Patient #5642400",
+      "phoneE164": "+923005642400",
+      "customerEmail": null,
+      "address": "São Pedro, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-12-02T05:00:00.000Z",
+      "endsAt": "2026-12-02T06:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642400"
+    },
+    {
+      "kaggleAppointmentId": "5642186",
+      "customerName": "Patient #5642186",
+      "phoneE164": "+923005642186",
+      "customerEmail": null,
+      "address": "Santa Martha, Vitória Clinic District",
+      "reason": "General Medical Consultation",
+      "startsAt": "2026-12-02T07:00:00.000Z",
+      "endsAt": "2026-12-02T08:00:00.000Z",
+      "timezone": "Asia/Karachi",
+      "status": "confirmed",
+      "idempotencyKey": "kaggle:5642186"
+    }
+  ]
+}

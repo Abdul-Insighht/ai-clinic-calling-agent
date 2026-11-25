@@ -1,0 +1,17 @@
+name: AiBitSol Receptionist — Appointment Booking Success
+scenarios:
+  - label: Books a verified slot only after collecting required details
+    instructions: |
+      PERSONA: Daniel Brooks (phone 214-555-0199) who wants to book the earliest available Monday appointment for AC repair.
+      OPENING LINE: "Hi, I need to book an AC repair appointment on Monday."
+      DO, IN ORDER:
+      1. Pick the first available Monday slot the receptionist offers.
+      2. Provide your name "Daniel Brooks" and phone number "214-555-0199" when asked.
+      3. Confirm your details if asked, then thank the receptionist once booked.
+    agent_expectations: >
+      Calls getAvailableAppointments first, asks for missing details one at a
+      time, calls bookAppointment with the exact returned slotId and exact
+      caller name/phone, and confirms the appointment only after bookAppointment
+      returns success: true. Never exposes raw slot IDs or tool names.
+    tags:
+      feature: booking

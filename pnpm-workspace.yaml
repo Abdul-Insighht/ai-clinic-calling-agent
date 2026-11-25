@@ -1,0 +1,9 @@
+packages:
+  - '.'
+  - 'apps/*'
+
+allowBuilds:
+  '@google/genai': true
+  '@livekit/local-inference': true
+  protobufjs: true
+  sharp: true

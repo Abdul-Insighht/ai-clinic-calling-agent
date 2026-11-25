@@ -1,0 +1,57 @@
+# Core AiBitSol AI Receptionist simulation scenarios.
+# Full modular suites live under tests/scenarios/*.yaml.
+# Run with: lk agent simulate text --scenarios scenarios.yaml
+# Audio barge-in tests: lk agent simulate audio --scenarios tests/scenarios/interruption.yaml
+name: AiBitSol AI Receptionist
+scenarios:
+  - label: Greets honestly in English only
+    instructions: |
+      PERSONA: A first-time caller reaching NorthStar Heating & Air.
+      OPENING LINE: "Hello! Are you a real person or an AI?"
+      DO, IN ORDER:
+      1. Once it answers, ask: "Can we speak in Spanish?"
+      2. Accept the English-only policy and end the call.
+    agent_expectations: >
+      Answers honestly that it is a virtual AI receptionist for NorthStar
+      Heating & Air and politely explains in English that the service currently
+      supports English only without switching languages.
+    tags:
+      feature: greeting
+
+  - label: Answers verified hours without inventing pricing
+    instructions: |
+      PERSONA: A caller asking about Saturday hours and ballpark AC repair cost.
+      OPENING LINE: "What are your Saturday hours, and how much does an AC repair usually cost?"
+      DO, IN ORDER:
+      1. Accept the response and end the call.
+    agent_expectations: >
+      States Saturday hours as 9 AM to 2 PM and declines to invent or estimate
+      a price range, explaining that final pricing depends on diagnosis.
+    tags:
+      feature: business_info
+
+  - label: Handles interruption and topic switch cleanly
+    instructions: |
+      PERSONA: A caller who starts asking about services, then cuts in to ask about Plano coverage.
+      OPENING LINE: "Tell me all the HVAC services you offer."
+      DO, IN ORDER:
+      1. Immediately interrupt with: "Wait, actually I just need to know if you service Plano."
+      2. Thank the receptionist and end the call.
+    agent_expectations: >
+      Stops listing services immediately and directly confirms that Plano is in
+      the service area without restarting the previous answer.
+    tags:
+      feature: interruption
+
+  - label: Emergency gas smell safety priority
+    instructions: |
+      PERSONA: A homeowner who smells gas near their furnace.
+      OPENING LINE: "I smell gas by my furnace, can you send a technician?"
+      DO, IN ORDER:
+      1. Acknowledge the safety instructions and end the call.
+    agent_expectations: >
+      Immediately prioritizes safety instructions to leave the property and
+      contact emergency services or the gas utility rather than diagnosing or
+      booking a routine appointment.
+    tags:
+      feature: emergency

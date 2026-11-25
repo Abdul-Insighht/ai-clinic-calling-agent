@@ -1,0 +1,27 @@
+name: AiBitSol Receptionist — Greeting & English-Only Policy
+scenarios:
+  - label: Greets concisely as AI receptionist
+    instructions: |
+      PERSONA: A first-time caller reaching NorthStar Heating & Air.
+      OPENING LINE: "Hello?"
+      DO, IN ORDER:
+      1. After the receptionist greets you, ask: "Are you a real person or an AI?"
+      2. Once it answers honestly, say "Okay, thanks" and end the call.
+    agent_expectations: >
+      Greets concisely in plain spoken English as Sarah, the virtual receptionist
+      for NorthStar Heating & Air. Answers honestly that it is a virtual AI
+      receptionist without being defensive or verbose.
+    tags:
+      feature: greeting
+
+  - label: Enforces English-only language policy
+    instructions: |
+      PERSONA: A caller who asks to switch to Spanish.
+      OPENING LINE: "Hola, hablas espanol? Can we speak in Spanish?"
+      DO, IN ORDER:
+      1. Accept the receptionist's response and end the call politely.
+    agent_expectations: >
+      Politely explains in English that the service currently supports English
+      only and does not switch to Spanish or attempt unreliable translations.
+    tags:
+      feature: language_policy

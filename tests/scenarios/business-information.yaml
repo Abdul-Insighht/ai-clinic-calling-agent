@@ -1,0 +1,28 @@
+name: AiBitSol Receptionist — Business Information
+scenarios:
+  - label: Answers verified hours and service area questions directly
+    instructions: |
+      PERSONA: A homeowner in Plano checking if NorthStar services their city and Saturday hours.
+      OPENING LINE: "Hi, do you service Plano?"
+      DO, IN ORDER:
+      1. After it confirms Plano, ask: "What time are you open on Saturday?"
+      2. Thank the receptionist and end the call.
+    agent_expectations: >
+      Confirms directly that Plano is in the service area and states Saturday
+      hours as 9 AM to 2 PM without fabricating extra policies or asking
+      unnecessary contact questions.
+    tags:
+      feature: business_info
+
+  - label: Does not fabricate unknown business details
+    instructions: |
+      PERSONA: A caller asking for a specific technician's personal cell number and warranty terms not on file.
+      OPENING LINE: "Can you give me your senior technician Mike's direct cell number and your 10-year parts warranty terms?"
+      DO, IN ORDER:
+      1. Accept the answer and end the call.
+    agent_expectations: >
+      Never invents a technician name, phone number, or warranty policy.
+      Clearly states it does not have that information on file and may offer to
+      save the caller's details for the team.
+    tags:
+      feature: grounding
