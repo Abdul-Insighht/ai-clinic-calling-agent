@@ -71,3 +71,13 @@ GEMINI.md
 .github/copilot-instructions.md
 .github/personal-instructions.md
 .github/instructions/
+.agents/
+
+# Frontend & large local datasets not needed by voice agent container
+apps/frontend/
+KaggleV2-May-2016.csv
+*.csv
+secrets/
+gcp-*.json
+*.png
+*.jpg
