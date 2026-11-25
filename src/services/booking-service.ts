@@ -190,43 +190,40 @@ export class BookingService {
     const calendarId = business.googleCalendarId ?? getAppConfig().calendar.calendarId;
 
     const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
-    let emailResult: unknown = { skipped: true };
-    let whatsappResult: unknown = { skipped: true };
 
     if (!isTestEnv) {
-      const emailPromise = reservation.appointment.customerEmail
-        ? sendAppointmentConfirmationEmail({
-            toEmail: reservation.appointment.customerEmail,
-            businessName: business.name,
-            businessLocation: business.location,
-            booking: reservation.appointment,
-            isUpdate: false,
-          }).then((r) => {
-            emailResult = r;
-          })
-        : Promise.resolve();
+      const dispatchNotifications = async () => {
+        let emailResult: unknown = { skipped: true };
+        let whatsappResult: unknown = { skipped: true };
 
-      const whatsappPromise = reservation.appointment.phoneE164
-        ? sendAppointmentConfirmationWhatsApp({
-            toPhone: reservation.appointment.phoneE164,
-            businessName: business.name,
-            businessLocation: business.location,
-            booking: reservation.appointment,
-            isUpdate: false,
-          }).then((r) => {
-            whatsappResult = r;
-          })
-        : Promise.resolve();
+        const emailPromise = reservation.appointment.customerEmail
+          ? sendAppointmentConfirmationEmail({
+              toEmail: reservation.appointment.customerEmail,
+              businessName: business.name,
+              businessLocation: business.location,
+              booking: reservation.appointment,
+              isUpdate: false,
+            }).then((r) => {
+              emailResult = r;
+            })
+          : Promise.resolve();
 
-      // Wait up to 6s in parallel so cloud workers flush Email + WhatsApp before returning
-      await Promise.race([
-        Promise.allSettled([emailPromise, whatsappPromise]),
-        new Promise((resolve) => setTimeout(resolve, 6000)),
-      ]);
+        const whatsappPromise = reservation.appointment.phoneE164
+          ? sendAppointmentConfirmationWhatsApp({
+              toPhone: reservation.appointment.phoneE164,
+              businessName: business.name,
+              businessLocation: business.location,
+              booking: reservation.appointment,
+              isUpdate: false,
+            }).then((r) => {
+              whatsappResult = r;
+            })
+          : Promise.resolve();
 
-      // Persist notification delivery result to audit_logs for cloud observability
-      if (getAppConfig().database.isPostgresConfigured) {
-        void (async () => {
+        await Promise.allSettled([emailPromise, whatsappPromise]);
+
+        // Persist notification delivery result to audit_logs for cloud observability
+        if (getAppConfig().database.isPostgresConfigured) {
           try {
             const { getDbPool } = await import('../db/client.ts');
             await getDbPool().query(
@@ -253,7 +250,17 @@ export class BookingService {
           } catch {
             // Non-fatal observability write
           }
-        })();
+        }
+      };
+
+      if (input.asyncCalendarSync) {
+        // Fast voice path: return immediately (~100ms) while Email + WhatsApp + audit run in background
+        void dispatchNotifications();
+      } else {
+        await Promise.race([
+          dispatchNotifications(),
+          new Promise((resolve) => setTimeout(resolve, 6000)),
+        ]);
       }
     }
 
