@@ -1,5 +1,6 @@
 import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
 import * as google from '@livekit/agents-plugin-google';
+import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { fileURLToPath } from 'node:url';
 import { createReceptionistAgent } from './agent/receptionist.ts';
 import { getAppConfig } from './config/index.ts';
@@ -293,6 +294,14 @@ export default defineAgent({
     await session.start({
       room: ctx.room,
       record: { audio: false },
+      inputOptions: {
+        // LiveKit Cloud Krisp BVC: strips surrounding voices, fans, and room chatter
+        noiseCancellation: BackgroundVoiceCancellation(),
+      },
+      outputOptions: {
+        // Larger audio ring buffer so bursty Gemini confirmation speech never drops frames
+        queueSizeMs: 1000,
+      },
       agent: createReceptionistAgent({
         context: sessionContext,
         business,

@@ -64,7 +64,11 @@ export function LiveCallWidget({ authToken, businessName, receptionistName }: Pr
       });
 
       await room.connect(session.livekitUrl, session.token);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      await room.localParticipant.setMicrophoneEnabled(true, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
 
       roomRef.current = room;
       setRoomName(session.roomName);
