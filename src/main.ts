@@ -203,9 +203,9 @@ export default defineAgent({
       } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         lastUserSpeechEndAt = performance.now();
         consecutiveRecoveries = 0;
-        // Stage 1 (3s): Gentle non-interrupting follow-up if Sarah hasn't started speaking yet
+        // Stage 1 (2s): Gentle non-interrupting follow-up if Sarah hasn't started speaking yet
         // (Cancelled ONLY on AgentStateChanged('speaking'), NOT SpeechCreated, so tool waits get follow-ups!)
-        scheduleWaitFollowUp(3000);
+        scheduleWaitFollowUp(2000);
         // Stage 2 (9.5s): Full recovery if completely stalled
         scheduleNoResponseRecovery(9500, 'no_speech_after_user');
       }
