@@ -36,6 +36,11 @@ export const bookAppointmentParameters = z.object({
     .string()
     .min(1)
     .describe('A short description of why the caller needs the appointment.'),
+  callerConfirmedDetails: z
+    .boolean()
+    .describe(
+      'MUST be true ONLY AFTER you have read back all details (service, date/time, name, phone, address, email) and the caller explicitly said yes/confirmed. Set false if not yet confirmed.',
+    ),
 });
 
 export function createBookAppointmentTool(context: BusinessContext, bookingService: BookingService) {
@@ -44,15 +49,37 @@ export function createBookAppointmentTool(context: BusinessContext, bookingServi
 
     description: `
       Book one verified appointment using the exact slotId from the latest
-      getAvailableAppointments result after confirming the caller's name, phone, service address, and reason.
+      getAvailableAppointments result ONLY AFTER reading back all details and receiving explicit caller confirmation (callerConfirmedDetails: true).
+      Never call this tool before the caller explicitly says yes to the read-back summary.
       Never claim the appointment is booked unless this tool returns success: true.
       If the slot is expired or unavailable, call getAvailableAppointments again.
     `,
 
     parameters: bookAppointmentParameters,
 
-    execute: async ({ slotId, customerName, phone, customerEmail, address, reason }) => {
+    execute: async ({
+      slotId,
+      customerName,
+      phone,
+      customerEmail,
+      address,
+      reason,
+      callerConfirmedDetails,
+    }) => {
       const startedAt = performance.now();
+      if (!callerConfirmedDetails) {
+        logger.warn('appointment.booking.blocked_unconfirmed', {
+          businessId: context.businessId,
+          slotId,
+        });
+        return {
+          success: false,
+          error: 'CONFIRMATION_REQUIRED',
+          message:
+            'Booking blocked: read back the service, date/time, full name, phone number, address, and email to the caller first, and wait for them to explicitly confirm before calling bookAppointment with callerConfirmedDetails: true.',
+        };
+      }
+
       logger.info('appointment.booking.started', {
         businessId: context.businessId,
         slotId,

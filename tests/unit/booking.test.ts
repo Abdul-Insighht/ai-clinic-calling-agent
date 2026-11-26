@@ -7,6 +7,7 @@ import { InMemoryBusinessRepository } from '../../src/repositories/business-repo
 import { AvailabilityService } from '../../src/services/availability-service.ts';
 import { BookingService } from '../../src/services/booking-service.ts';
 import { BusinessService } from '../../src/services/business-service.ts';
+import { createBookAppointmentTool } from '../../src/tools/book-appointment.ts';
 import {
   type CalendarAdapter,
   NoopCalendarAdapter,
@@ -270,5 +271,43 @@ describe('Phase 4 — Transactional booking, idempotency, and calendar outbox sy
     expect(calendar.updatedEvents[0]?.eventId).toBe('gcal-evt-1');
     expect(calendar.updatedEvents[0]?.summary).toContain('Muhammad Daniyal');
     expect(calendar.updatedEvents[0]?.description).toContain('Customer: Muhammad Daniyal');
+  });
+
+  it('blocks bookAppointment tool when callerConfirmedDetails is false (prevents premature WhatsApp/Email)', async () => {
+    const businessService = new BusinessService(new InMemoryBusinessRepository([demoBusiness]));
+    const appointmentRepository = new InMemoryAppointmentRepository();
+    const availability = new AvailabilityService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+    const booking = new BookingService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+
+    const slots = await availability.getAvailableSlots(northstarContext, {
+      requestedDay: 'Monday',
+      now,
+    });
+    const chosen = slots.availableSlots[0]!;
+    const toolDef = createBookAppointmentTool(northstarContext, booking);
+
+    const blocked = (await toolDef.execute(
+      {
+        slotId: chosen.slotId,
+        customerName: 'Unconfirmed Caller',
+        phone: '03283121702',
+        reason: 'General Medical Consultation',
+        callerConfirmedDetails: false,
+      },
+      {} as never,
+    )) as { success: boolean; error?: string };
+
+    expect(blocked.success).toBe(false);
+    expect(blocked.error).toBe('CONFIRMATION_REQUIRED');
+    const saved = await appointmentRepository.listAppointments(northstarContext);
+    expect(saved).toHaveLength(0);
   });
 });

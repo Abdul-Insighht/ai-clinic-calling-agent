@@ -186,7 +186,7 @@ export default defineAgent({
             session.generateReply({
               instructions:
                 reason === 'silent_after_tool' || reason === 'silent_after_thinking'
-                  ? 'The last action just completed. Immediately confirm the result warmly to the caller in 1-2 clear, steady sentences (mentioning their confirmed appointment, email, and WhatsApp confirmation if booked) and ask if they need anything else.'
+                  ? 'The last action just completed. Immediately speak a warm, clear confirmation of the result in 1-2 steady sentences (confirming their booked appointment details, email, and WhatsApp confirmation if booked) and ALWAYS ask a friendly follow-up like "Is there anything else I can help you with today?"'
                   : 'Politely tell the caller in one short sentence: "Sorry, I didn\'t quite catch that. Could you please repeat?"',
             });
           } catch {
@@ -213,9 +213,9 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
       toolRanSinceSpeechCreated = true;
       clearWaitFollowUpTimer();
-      // Tool already completed & returned — immediately nudge after 2.5s if Gemini stalls silently
+      // Tool already completed & returned — immediately nudge after 2.0s if Gemini stalls silently
       consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(2500, 'silent_after_tool');
+      scheduleNoResponseRecovery(2000, 'silent_after_tool');
     });
 
     session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
