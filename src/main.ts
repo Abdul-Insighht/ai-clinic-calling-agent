@@ -1,6 +1,7 @@
-import { ServerOptions, cli, defineAgent, inference, voice } from '@livekit/agents';
-// Option B — Through Gemini 2.5 Flash Native Audio Preview (uncomment if switching back):
-// import * as google from '@livekit/agents-plugin-google';
+import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
+// Option A (Commented Backup) — LiveKit Cloud Inference:
+// import { inference } from '@livekit/agents';
+import * as google from '@livekit/agents-plugin-google';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { fileURLToPath } from 'node:url';
 import { createReceptionistAgent } from './agent/receptionist.ts';
@@ -62,54 +63,29 @@ export default defineAgent({
       totalStartupMs: Math.round(performance.now() - startupStart),
     });
 
-    const sttModel = 'deepgram/nova-3:en' as const;
-    const llmModel = 'openai/gpt-4.1-mini' as const;
-    const ttsModel = 'cartesia/sonic-3' as const;
-    const ttsVoice = '9626c31c-bec5-4cca-baa8-f8ba9e84c8bc';
+    // Option B (Active) — Gemini 3.1 Flash Live Preview (Next-Gen Native Audio)
+    // Fallback model ID if ever needed: 'gemini-2.5-flash-native-audio-preview-12-2025'
+    const model = 'gemini-3.1-flash-live-preview';
+    const voiceName = business.aiVoice || runtimeConfig.gemini.voice;
 
     logger.info('agent.session.starting', {
       businessId: sessionContext.businessId,
       callId: sessionContext.callId ?? 'pending',
       roomName: ctx.room.name,
-      pipeline: 'livekit_inference',
-      stt: sttModel,
-      llm: llmModel,
-      tts: ttsModel,
-      voice: ttsVoice,
+      pipeline: 'gemini_live_3_1',
+      model,
+      voice: voiceName,
       environment: runtimeConfig.nodeEnv,
     });
-
-    // Option A (Active) — LiveKit Cloud Inference Studio Pipeline
-    const session = new voice.AgentSession({
-      stt: sttModel,
-      llm: llmModel,
-      tts: new inference.TTS({
-        model: ttsModel,
-        voice: ttsVoice,
-        language: 'en',
-      }),
-      turnHandling: {
-        turnDetection: new inference.TurnDetector(),
-      },
-    });
-
-    /*
-    // Option B — Through Gemini 2.5 Flash Native Audio Preview (commented backup)
-    const model = business.aiModel || runtimeConfig.gemini.model;
-    const voiceName = business.aiVoice || runtimeConfig.gemini.voice;
 
     const session = new voice.AgentSession({
       llm: new google.beta.realtime.RealtimeModel({
         model,
         voice: voiceName,
         temperature: runtimeConfig.gemini.temperature,
-        thinkingConfig: {
-          includeThoughts: runtimeConfig.gemini.includeThoughts,
-          thinkingBudget: 0,
-        },
         realtimeInputConfig: {
           automaticActivityDetection: {
-            silenceDurationMs: 400,
+            silenceDurationMs: 450,
             prefixPaddingMs: 120,
           },
         },
@@ -123,20 +99,71 @@ export default defineAgent({
         },
       },
     });
+
+    /*
+    // Option A (Commented Backup) — LiveKit Cloud Inference Studio Pipeline
+    const session = new voice.AgentSession({
+      stt: 'deepgram/nova-3:en',
+      llm: 'openai/gpt-4.1-mini',
+      tts: new inference.TTS({
+        model: 'cartesia/sonic-3',
+        voice: '9626c31c-bec5-4cca-baa8-f8ba9e84c8bc',
+        language: 'en',
+      }),
+      turnHandling: {
+        turnDetection: new inference.TurnDetector(),
+      },
+    });
     */
 
     let lastUserSpeechEndAt: number | null = null;
     let lastAgentThinkingAt: number | null = null;
+    let sessionActive = true;
+    let isAgentSpeaking = false;
+    let postToolTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearPostToolTimer = () => {
+      if (postToolTimer) {
+        clearTimeout(postToolTimer);
+        postToolTimer = null;
+      }
+    };
 
     session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
-      if (ev.oldState === 'speaking' && ev.newState === 'listening') {
+      if (ev.newState === 'speaking') {
+        clearPostToolTimer();
+      } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         sessionContext.userTurnCount = (sessionContext.userTurnCount ?? 0) + 1;
         lastUserSpeechEndAt = performance.now();
       }
     });
 
+    // Gentle, non-interrupting post-tool safety net ONLY (never kills an active turn or tool!)
+    session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
+      clearPostToolTimer();
+      postToolTimer = setTimeout(() => {
+        postToolTimer = null;
+        if (!sessionActive || isAgentSpeaking) return;
+        logger.info('voice.turn.post_tool_nudge', {
+          callId: sessionContext.callId ?? 'pending',
+        });
+        try {
+          session.generateReply({
+            instructions:
+              'The tool just returned its result. Immediately speak the clear answer or confirmation warmly in 1-2 short sentences and ask if they need anything else.',
+          });
+        } catch {
+          // Ignore if session already started speaking
+        }
+      }, 2500);
+    });
+
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       const now = performance.now();
+      isAgentSpeaking = ev.newState === 'speaking';
+      if (isAgentSpeaking) {
+        clearPostToolTimer();
+      }
       if (ev.newState === 'thinking') {
         lastAgentThinkingAt = now;
       } else if (ev.newState === 'speaking' && lastUserSpeechEndAt !== null) {
@@ -157,7 +184,14 @@ export default defineAgent({
       }
     });
 
+    session.on(voice.AgentSessionEventTypes.Close, () => {
+      sessionActive = false;
+      clearPostToolTimer();
+    });
+
     ctx.addShutdownCallback(async () => {
+      sessionActive = false;
+      clearPostToolTimer();
       const record = await callRecordPromise;
       if (record) {
         await callRepository.completeCall(sessionContext, record.id, 'completed');
@@ -176,8 +210,8 @@ export default defineAgent({
         noiseCancellation: BackgroundVoiceCancellation(),
       },
       outputOptions: {
-        // Generous audio ring buffer for smooth, skip-free streaming TTS playback
-        queueSizeMs: 1000,
+        // Larger 3s audio ring buffer so bursty Gemini speech never drops or skips frames
+        queueSizeMs: 3000,
       },
       agent: createReceptionistAgent({
         context: sessionContext,
@@ -195,10 +229,12 @@ export default defineAgent({
       roomName: ctx.room.name,
     });
 
-    session.say(
-      `Thank you for calling ${business.name}! This is ${business.receptionistName}, how can I help you today?`,
-      { allowInterruptions: true },
-    );
+    await session.generateReply({
+      instructions: `
+        Greet the caller warmly in English as ${business.receptionistName}, the virtual receptionist for ${business.name}.
+        Say: "Thank you for calling ${business.name}! This is ${business.receptionistName}, how can I help you today?"
+      `,
+    });
   },
 });
 
