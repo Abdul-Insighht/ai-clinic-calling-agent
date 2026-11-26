@@ -87,14 +87,14 @@ type OutboundCampaign = {
 };
 
 const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
-  inboundPhone: '+1 (555) 234-5678',
-  outboundCallerId: '+1 (555) 234-5679',
-  transferPhone: '+1 (555) 987-6543',
-  whatsappNumber: '+1 (555) 234-5678',
+  inboundPhone: '+1 (240) 212-4068',
+  outboundCallerId: '+1 (240) 212-4068',
+  transferPhone: '+1 (240) 212-4068',
+  whatsappNumber: '+1 (555) 137-4693',
   autoWhatsappConfirm: true,
   autoWhatsappReminder: true,
   whatsappTemplate:
-    'Hi {{customer_name}}, your appointment with {{business_name}} is confirmed for {{date}} at {{time}}. Reply RESCHEDULE if you need any changes.',
+    'Hi {{customer_name}}, your appointment ({{booking_code}}) with {{business_name}} is confirmed for {{date}} at {{time}}. Call anytime with {{booking_code}} to check, update, reschedule, or cancel.',
 };
 
 const DEFAULT_CAMPAIGNS: OutboundCampaign[] = [
@@ -191,6 +191,7 @@ export function App() {
   const [healthStatus, setHealthStatus] = useState<string>('checking');
   const [perfMetrics, setPerfMetrics] = useState<PerformanceMetrics | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [apptSearch, setApptSearch] = useState('');
 
   // Voice Playground & Orb state
   const orbControllerRef = useRef<OrbController | null>(null);
@@ -1556,6 +1557,13 @@ export function App() {
                     Confirmed bookings stored in PostgreSQL and synced via Google Calendar outbox.
                   </div>
                 </div>
+                <input
+                  type="text"
+                  value={apptSearch}
+                  onChange={(e) => setApptSearch(e.target.value)}
+                  placeholder="Search BK001, name, or phone..."
+                  style={{ maxWidth: 260, marginLeft: 'auto', marginRight: 10 }}
+                />
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => void loadDashboard()}
@@ -1582,7 +1590,21 @@ export function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {appointments.map((appt) => (
+                      {appointments
+                        .filter((appt) => {
+                          const q = apptSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          const code = (
+                            appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`
+                          ).toLowerCase();
+                          return (
+                            code.includes(q) ||
+                            appt.customerName.toLowerCase().includes(q) ||
+                            appt.phoneE164.toLowerCase().includes(q) ||
+                            (appt.customerEmail ?? '').toLowerCase().includes(q)
+                          );
+                        })
+                        .map((appt) => (
                         <tr key={appt.id}>
                           <td>
                             <span className="badge badge-accent" style={{ fontFamily: 'monospace' }}>
@@ -1602,7 +1624,17 @@ export function App() {
                           <td>{formatDateTime(appt.startsAt, appt.timezone)}</td>
                           <td>{appt.reason}</td>
                           <td>
-                            <span className="badge badge-ok">{appt.status}</span>
+                            <span
+                              className={`badge ${
+                                appt.status === 'cancelled' || appt.status === 'failed'
+                                  ? 'badge-danger'
+                                  : appt.status === 'confirmed'
+                                    ? 'badge-ok'
+                                    : 'badge-accent'
+                              }`}
+                            >
+                              {appt.status}
+                            </span>
                           </td>
                           <td>
                             <span
