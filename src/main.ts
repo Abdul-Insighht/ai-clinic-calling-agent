@@ -1,5 +1,4 @@
-import { ServerOptions, cli, defineAgent, voice } from '@livekit/agents';
-import * as google from '@livekit/agents-plugin-google';
+import { ServerOptions, cli, defineAgent, inference, voice } from '@livekit/agents';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { fileURLToPath } from 'node:url';
 import { createReceptionistAgent } from './agent/receptionist.ts';
@@ -61,164 +60,48 @@ export default defineAgent({
       totalStartupMs: Math.round(performance.now() - startupStart),
     });
 
-    const model = business.aiModel || runtimeConfig.gemini.model;
-    const voiceName = business.aiVoice || runtimeConfig.gemini.voice;
+    const sttModel = 'deepgram/nova-3:en' as const;
+    const llmModel = 'openai/gpt-4.1-mini' as const;
+    const ttsModel = 'cartesia/sonic-3' as const;
+    const ttsVoice = '9626c31c-bec5-4cca-baa8-f8ba9e84c8bc';
 
     logger.info('agent.session.starting', {
       businessId: sessionContext.businessId,
       callId: sessionContext.callId ?? 'pending',
       roomName: ctx.room.name,
-      model,
-      voice: voiceName,
+      pipeline: 'livekit_inference',
+      stt: sttModel,
+      llm: llmModel,
+      tts: ttsModel,
+      voice: ttsVoice,
       environment: runtimeConfig.nodeEnv,
     });
 
     const session = new voice.AgentSession({
-      llm: new google.beta.realtime.RealtimeModel({
-        model,
-        voice: voiceName,
-        temperature: runtimeConfig.gemini.temperature,
-        thinkingConfig: {
-          includeThoughts: runtimeConfig.gemini.includeThoughts,
-          thinkingBudget: 0,
-        },
-        realtimeInputConfig: {
-          automaticActivityDetection: {
-            silenceDurationMs: 400,
-            prefixPaddingMs: 120,
-          },
-        },
+      stt: sttModel,
+      llm: llmModel,
+      tts: new inference.TTS({
+        model: ttsModel,
+        voice: ttsVoice,
+        language: 'en',
       }),
-
       turnHandling: {
-        turnDetection: 'realtime_llm',
-
-        endpointing: {
-          mode: 'fixed',
-          minDelay: 200,
-          maxDelay: 700,
-        },
+        turnDetection: new inference.TurnDetector(),
       },
     });
 
     let lastUserSpeechEndAt: number | null = null;
     let lastAgentThinkingAt: number | null = null;
-    let noResponseTimer: ReturnType<typeof setTimeout> | null = null;
-    let sessionActive = true;
-    let consecutiveRecoveries = 0;
-    let isRecoverySpeech = false;
-    let isAgentSpeaking = false;
-    let spokeSinceSpeechCreated = false;
-    let toolRanSinceSpeechCreated = false;
-
-    const clearNoResponseTimer = () => {
-      if (noResponseTimer) {
-        clearTimeout(noResponseTimer);
-        noResponseTimer = null;
-      }
-    };
-
-    const scheduleNoResponseRecovery = (delayMs: number, reason: string) => {
-      if (noResponseTimer) {
-        clearTimeout(noResponseTimer);
-        noResponseTimer = null;
-      }
-      noResponseTimer = setTimeout(() => {
-        noResponseTimer = null;
-        // NEVER interrupt Sarah if she is actively speaking (prevents mid-confirmation cutoffs)
-        if (!sessionActive || isAgentSpeaking) return;
-        if (consecutiveRecoveries >= 2) {
-          logger.warn('voice.turn.no_response_recovery_capped', {
-            callId: sessionContext.callId ?? 'pending',
-            reason,
-          });
-          return;
-        }
-        consecutiveRecoveries += 1;
-        logger.info('voice.turn.no_response_recovery', {
-          callId: sessionContext.callId ?? 'pending',
-          thresholdMs: delayMs,
-          recoveryReason: reason,
-          attempt: consecutiveRecoveries,
-        });
-        try {
-          // Force-interrupt any stuck SpeechHandle (e.g. after bookAppointment tool response)
-          // so generateReply executes immediately instead of queueing behind a dead handle
-          session.interrupt({ force: true });
-        } catch {
-          // Ignore if nothing to interrupt
-        }
-        setTimeout(() => {
-          if (!sessionActive || isAgentSpeaking) return;
-          isRecoverySpeech = true;
-          try {
-            session.generateReply({
-              instructions:
-                reason === 'silent_after_tool' || reason === 'silent_after_thinking'
-                  ? 'The last action just completed. Immediately speak a warm, clear answer or confirmation of the result in 1-2 steady sentences (never say "one moment" or "please hold") and ask a friendly follow-up like "Is there anything else I can help you with today?"'
-                  : 'Directly answer the caller\'s last message right now in 1-2 short, warm sentences. Never say "one moment" or "please hold". If audio was unclear, politely ask them to repeat.',
-            });
-          } catch {
-            isRecoverySpeech = false;
-          }
-        }, 150);
-      }, delayMs);
-    };
 
     session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
-      if (ev.newState === 'speaking') {
-        consecutiveRecoveries = 0;
-        clearNoResponseTimer();
-      } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
+      if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         sessionContext.userTurnCount = (sessionContext.userTurnCount ?? 0) + 1;
         lastUserSpeechEndAt = performance.now();
-        consecutiveRecoveries = 0;
-        // Fast stall recovery (3.0s): never inject a fake "One moment" reply that hijacks Gemini's real turn
-        scheduleNoResponseRecovery(3000, 'no_speech_after_user');
-      }
-    });
-
-    session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
-      toolRanSinceSpeechCreated = true;
-      // Tool already completed & returned — immediately nudge after 1.0s if Gemini stalls silently
-      consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(1000, 'silent_after_tool');
-    });
-
-    session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
-      const wasRecovery = isRecoverySpeech;
-      isRecoverySpeech = false;
-      spokeSinceSpeechCreated = false;
-      toolRanSinceSpeechCreated = false;
-
-      // Exact event-driven recovery: if LiveKit force-closes a stalled speech handle
-      // without any audio or tool execution, immediately recover in 300ms.
-      ev.speechHandle.addDoneCallback((sh) => {
-        if (!sessionActive || wasRecovery) return;
-        if (!sh.interrupted && !spokeSinceSpeechCreated && !toolRanSinceSpeechCreated) {
-          scheduleNoResponseRecovery(300, 'silent_speech_closed');
-        }
-      });
-
-      // Fast 4.0s safety net: prevents 10-second silent freezes when Gemini stalls on a speech handle
-      if (!wasRecovery) {
-        scheduleNoResponseRecovery(4000, 'speech_stalled_after_tts_timeout');
       }
     });
 
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       const now = performance.now();
-      isAgentSpeaking = ev.newState === 'speaking';
-      if (ev.newState === 'speaking') {
-        spokeSinceSpeechCreated = true;
-        consecutiveRecoveries = 0;
-        isRecoverySpeech = false;
-        clearNoResponseTimer();
-      } else if (ev.oldState === 'thinking' && ev.newState === 'listening') {
-        // Agent finished thinking without producing audio — recover immediately in 0.8s
-        scheduleNoResponseRecovery(800, 'silent_after_thinking');
-      }
-
       if (ev.newState === 'thinking') {
         lastAgentThinkingAt = now;
       } else if (ev.newState === 'speaking' && lastUserSpeechEndAt !== null) {
@@ -239,14 +122,7 @@ export default defineAgent({
       }
     });
 
-    session.on(voice.AgentSessionEventTypes.Close, () => {
-      sessionActive = false;
-      clearNoResponseTimer();
-    });
-
     ctx.addShutdownCallback(async () => {
-      sessionActive = false;
-      clearNoResponseTimer();
       const record = await callRecordPromise;
       if (record) {
         await callRepository.completeCall(sessionContext, record.id, 'completed');
@@ -265,8 +141,8 @@ export default defineAgent({
         noiseCancellation: BackgroundVoiceCancellation(),
       },
       outputOptions: {
-        // Larger 3s audio ring buffer so bursty Gemini long responses never drop or skip frames
-        queueSizeMs: 3000,
+        // Generous audio ring buffer for smooth, skip-free streaming TTS playback
+        queueSizeMs: 1000,
       },
       agent: createReceptionistAgent({
         context: sessionContext,
@@ -284,12 +160,10 @@ export default defineAgent({
       roomName: ctx.room.name,
     });
 
-    await session.generateReply({
-      instructions: `
-        Greet the caller warmly in English as ${business.receptionistName}, the virtual receptionist for ${business.name}.
-        Say: "Thank you for calling ${business.name}! This is ${business.receptionistName}, how can I help you today?"
-      `,
-    });
+    session.say(
+      `Thank you for calling ${business.name}! This is ${business.receptionistName}, how can I help you today?`,
+      { allowInterruptions: true },
+    );
   },
 });
 
