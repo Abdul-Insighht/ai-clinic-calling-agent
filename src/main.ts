@@ -1,4 +1,6 @@
 import { ServerOptions, cli, defineAgent, inference, voice } from '@livekit/agents';
+// Option B — Through Gemini 2.5 Flash Native Audio Preview (uncomment if switching back):
+// import * as google from '@livekit/agents-plugin-google';
 import { BackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { fileURLToPath } from 'node:url';
 import { createReceptionistAgent } from './agent/receptionist.ts';
@@ -77,6 +79,7 @@ export default defineAgent({
       environment: runtimeConfig.nodeEnv,
     });
 
+    // Option A (Active) — LiveKit Cloud Inference Studio Pipeline
     const session = new voice.AgentSession({
       stt: sttModel,
       llm: llmModel,
@@ -89,6 +92,38 @@ export default defineAgent({
         turnDetection: new inference.TurnDetector(),
       },
     });
+
+    /*
+    // Option B — Through Gemini 2.5 Flash Native Audio Preview (commented backup)
+    const model = business.aiModel || runtimeConfig.gemini.model;
+    const voiceName = business.aiVoice || runtimeConfig.gemini.voice;
+
+    const session = new voice.AgentSession({
+      llm: new google.beta.realtime.RealtimeModel({
+        model,
+        voice: voiceName,
+        temperature: runtimeConfig.gemini.temperature,
+        thinkingConfig: {
+          includeThoughts: runtimeConfig.gemini.includeThoughts,
+          thinkingBudget: 0,
+        },
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            silenceDurationMs: 400,
+            prefixPaddingMs: 120,
+          },
+        },
+      }),
+      turnHandling: {
+        turnDetection: 'realtime_llm',
+        endpointing: {
+          mode: 'fixed',
+          minDelay: 200,
+          maxDelay: 700,
+        },
+      },
+    });
+    */
 
     let lastUserSpeechEndAt: number | null = null;
     let lastAgentThinkingAt: number | null = null;
