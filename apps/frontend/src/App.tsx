@@ -947,6 +947,7 @@ export function App() {
                   <table>
                     <thead>
                       <tr>
+                        <th>Booking ID</th>
                         <th>Customer</th>
                         <th>Phone</th>
                         <th>Date & Time</th>
@@ -957,6 +958,11 @@ export function App() {
                     <tbody>
                       {appointments.slice(0, 5).map((appt) => (
                         <tr key={appt.id}>
+                          <td>
+                            <span className="badge badge-accent" style={{ fontFamily: 'monospace' }}>
+                              {appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`}
+                            </span>
+                          </td>
                           <td>
                             <strong>{appt.customerName}</strong>
                             {appt.address && (
@@ -1565,6 +1571,7 @@ export function App() {
                   <table>
                     <thead>
                       <tr>
+                        <th>Booking ID</th>
                         <th>Customer</th>
                         <th>Phone</th>
                         <th>Address</th>
@@ -1577,6 +1584,11 @@ export function App() {
                     <tbody>
                       {appointments.map((appt) => (
                         <tr key={appt.id}>
+                          <td>
+                            <span className="badge badge-accent" style={{ fontFamily: 'monospace' }}>
+                              {appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`}
+                            </span>
+                          </td>
                           <td>
                             <strong>{appt.customerName}</strong>
                             {appt.customerEmail && (

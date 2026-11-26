@@ -310,4 +310,43 @@ describe('Phase 4 — Transactional booking, idempotency, and calendar outbox sy
     const saved = await appointmentRepository.listAppointments(northstarContext);
     expect(saved).toHaveLength(0);
   });
+
+  it('assigns clean sequential human-friendly booking codes (BK001, BK002)', async () => {
+    const businessService = new BusinessService(new InMemoryBusinessRepository([demoBusiness]));
+    const appointmentRepository = new InMemoryAppointmentRepository();
+    const availability = new AvailabilityService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+    const booking = new BookingService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+
+    const slots = await availability.getAvailableSlots(northstarContext, {
+      requestedDay: 'Monday',
+      now,
+    });
+    const first = await booking.bookAppointment(northstarContext, {
+      slotId: slots.availableSlots[0]!.slotId,
+      customerName: 'Patient One',
+      phone: '03283121701',
+      reason: 'Checkup 1',
+      idempotencyKey: 'seq:1',
+      nowIso: now.toUTC().toISO()!,
+    });
+    const second = await booking.bookAppointment(northstarContext, {
+      slotId: slots.availableSlots[1]!.slotId,
+      customerName: 'Patient Two',
+      phone: '03283121702',
+      reason: 'Checkup 2',
+      idempotencyKey: 'seq:2',
+      nowIso: now.toUTC().toISO()!,
+    });
+
+    expect(first.success && first.booking.bookingCode).toBe('BK001');
+    expect(second.success && second.booking.bookingCode).toBe('BK002');
+  });
 });

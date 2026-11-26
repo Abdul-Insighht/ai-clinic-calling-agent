@@ -63,6 +63,7 @@ export interface AppointmentRepository {
 
 type AppointmentRow = {
   id: string;
+  booking_code?: string | null;
   business_id: string;
   service_id: string | null;
   call_id: string | null;
@@ -84,6 +85,7 @@ type AppointmentRow = {
 function mapAppointmentRow(row: AppointmentRow): AppointmentRecord {
   return {
     id: row.id,
+    bookingCode: row.booking_code ?? `BK${row.id.slice(0, 6).toUpperCase()}`,
     businessId: row.business_id,
     serviceId: row.service_id,
     callId: row.call_id,
@@ -280,7 +282,11 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
       // 2. Single atomic writable CTE: insert appointment + consume hold + enqueue outbox + audit log
       try {
         const tCte = performance.now();
-        const inserted = await client.query<{ id: string; created_at: Date }>(
+        const inserted = await client.query<{
+          id: string;
+          booking_code: string | null;
+          created_at: Date;
+        }>(
           `
           WITH inserted_appt AS (
             INSERT INTO aibitsol.appointments (
@@ -289,7 +295,7 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
               timezone, status, idempotency_key
             )
             VALUES ($1, $2, $3, $4, $5, $6, $16, $7, $8, $9, $10, $11, 'pending_calendar_sync', $12)
-            RETURNING id, created_at
+            RETURNING id, booking_code, created_at
           ),
           consumed_hold AS (
             UPDATE aibitsol.availability_holds
@@ -307,7 +313,7 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
             SELECT $1, 'agent', $14, 'appointment.reserved', 'appointment', id, $15::jsonb
             FROM inserted_appt
           )
-          SELECT id, created_at FROM inserted_appt
+          SELECT id, booking_code, created_at FROM inserted_appt
           `,
           [
             context.businessId,
@@ -359,6 +365,7 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
           idempotentReplay: false,
           appointment: {
             id: row.id,
+            bookingCode: row.booking_code ?? `BK${row.id.slice(0, 6).toUpperCase()}`,
             businessId: context.businessId,
             serviceId: hold.service_id,
             callId: context.callId ?? null,
@@ -646,6 +653,7 @@ export class InMemoryAppointmentRepository implements AppointmentRepository {
   private readonly appointments = new Map<string, AppointmentRecord>();
   private readonly idempotencyIndex = new Map<string, string>();
   private readonly syncJobs = new Map<string, CalendarSyncJobRecord>();
+  private bookingSeq = 0;
 
   async listBusyIntervals(
     context: BusinessContext,
@@ -735,9 +743,11 @@ export class InMemoryAppointmentRepository implements AppointmentRepository {
     }
 
     const id = randomUUID();
+    const bookingCode = `BK${String(++this.bookingSeq).padStart(3, '0')}`;
     const createdAt = new Date(nowMs).toISOString();
     const appointment: AppointmentRecord = {
       id,
+      bookingCode,
       businessId: context.businessId,
       serviceId: hold.serviceId,
       callId: context.callId ?? null,

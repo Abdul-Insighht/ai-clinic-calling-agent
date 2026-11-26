@@ -33,6 +33,7 @@ export type AvailableSlot = {
 
 export type BookedAppointmentItem = {
   id: string;
+  bookingCode?: string;
   customerName: string;
   phoneE164: string;
   customerEmail?: string | null;

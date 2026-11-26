@@ -38,6 +38,7 @@ export type AvailabilityHoldRecord = {
 
 export type AppointmentRecord = {
   id: string;
+  bookingCode?: string;
   businessId: string;
   serviceId: string | null;
   callId: string | null;

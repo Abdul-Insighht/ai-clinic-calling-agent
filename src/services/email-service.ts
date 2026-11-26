@@ -69,7 +69,7 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
     startLocal.isValid && endLocal.isValid
       ? `${startLocal.toFormat('h:mm a')} – ${endLocal.toFormat('h:mm a')} (${tz})`
       : booking.startsAt;
-  const shortRef = `#${booking.id.slice(0, 8).toUpperCase()}`;
+  const shortRef = booking.bookingCode || `BK${booking.id.slice(0, 6).toUpperCase()}`;
 
   const subject = isUpdate
     ? `Updated Appointment Confirmation (${shortRef}) — ${businessName}`
@@ -83,14 +83,14 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
   const text = [
     intro,
     '',
-    `Booking Reference: ${shortRef} (ID: ${booking.id})`,
+    `Booking ID: ${shortRef}`,
     `Service / Reason: ${booking.reason}`,
     `Date: ${dateDisplay}`,
     `Time: ${timeDisplay}`,
     `Phone: ${booking.phoneE164}`,
     `Address: ${booking.address || 'Not provided'}`,
     '',
-    `If you need to reschedule or make any changes, please call ${businessName}.`,
+    `Need to check, reschedule, update, or cancel? Call ${businessName} and mention Booking ID ${shortRef}.`,
   ].join('\n');
 
   const html = `
@@ -111,7 +111,7 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
         <table style="width:100%;border-collapse:collapse;background:#0b1020;border:1px solid #273357;border-radius:10px;">
           <tr>
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#94a3b8;font-size:13px;width:38%;">Booking ID</td>
-            <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#38bdf8;font-size:13px;font-weight:700;">${escapeHtml(shortRef)} <span style="color:#64748b;font-weight:400;font-size:11px;">(${escapeHtml(booking.id)})</span></td>
+            <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#38bdf8;font-size:14px;font-weight:700;font-family:monospace;">${escapeHtml(shortRef)}</td>
           </tr>
           <tr>
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#94a3b8;font-size:13px;">Customer</td>

@@ -128,9 +128,13 @@ export function createBookAppointmentTool(context: BusinessContext, bookingServi
         const startLocal = DateTime.fromISO(result.booking.startsAt, { zone: 'utc' }).setZone(tz);
         const endLocal = DateTime.fromISO(result.booking.endsAt, { zone: 'utc' }).setZone(tz);
 
+        const bookingCode =
+          result.booking.bookingCode || `BK${result.booking.id.slice(0, 6).toUpperCase()}`;
+
         return {
           success: true,
           pendingConfirmation: Boolean(result.pendingConfirmation),
+          bookingCode,
           bookingId: result.booking.id,
           slotId,
           date: startLocal.isValid ? startLocal.toFormat('cccc, LLL d, yyyy') : result.booking.label,
@@ -141,7 +145,7 @@ export function createBookAppointmentTool(context: BusinessContext, bookingServi
           appointmentLabel: result.booking.label,
           start: result.booking.startsAt,
           end: result.booking.endsAt,
-          message: result.message,
+          message: `${result.message} Share Booking ID ${bookingCode} with the caller (never read the raw UUID).`,
         };
       } catch (error) {
         logger.error('appointment.booking.error', {

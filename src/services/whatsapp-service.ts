@@ -52,7 +52,7 @@ function buildConfirmationText(payload: BookingWhatsAppPayload): string {
     startLocal.isValid && endLocal.isValid
       ? `${startLocal.toFormat('h:mm a')} – ${endLocal.toFormat('h:mm a')} (${tz})`
       : booking.startsAt;
-  const shortRef = `#${booking.id.slice(0, 8).toUpperCase()}`;
+  const shortRef = booking.bookingCode || `BK${booking.id.slice(0, 6).toUpperCase()}`;
 
   const heading = isUpdate ? 'Appointment Updated' : 'Appointment Confirmed';
   const intro = isUpdate
@@ -65,7 +65,7 @@ function buildConfirmationText(payload: BookingWhatsAppPayload): string {
     '',
     intro,
     '',
-    `*Booking ID:* ${shortRef} (${booking.id})`,
+    `*Booking ID:* ${shortRef}`,
     `*Customer:* ${booking.customerName}`,
     `*Service / Reason:* ${booking.reason}`,
     `*Date:* ${dateDisplay}`,
@@ -73,7 +73,7 @@ function buildConfirmationText(payload: BookingWhatsAppPayload): string {
     `*Phone Number:* ${booking.phoneE164}`,
     `*Service Address:* ${booking.address || businessLocation || 'Main Medical Plaza, City Center'}`,
     '',
-    `Need to reschedule or update your details? Just call ${businessName} and mention reference ${shortRef}.`,
+    `Need to check, reschedule, update, or cancel? Call ${businessName} and mention Booking ID *${shortRef}*.`,
   ].join('\n');
 }
 
