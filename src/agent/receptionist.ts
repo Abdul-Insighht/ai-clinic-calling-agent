@@ -23,6 +23,7 @@ import { type CalendarAdapter, GoogleCalendarAdapter } from '../services/google-
 import { createDefaultLeadService, type LeadService } from '../services/lead-service.ts';
 import { createBookAppointmentTool } from '../tools/book-appointment.ts';
 import { createCaptureLeadTool } from '../tools/capture-lead.ts';
+import { createGetAppointmentDetailsTool } from '../tools/get-appointment-details.ts';
 import { createGetAvailableAppointmentsTool } from '../tools/get-available-appointments.ts';
 import { createGetBusinessInformationTool } from '../tools/get-business-information.ts';
 import { createRequestHumanTransferTool } from '../tools/request-human-transfer.ts';
@@ -89,6 +90,7 @@ export function createReceptionistAgent(options: ReceptionistAgentOptions = {}) 
       createCaptureLeadTool(context, leadService),
       createGetAvailableAppointmentsTool(context, availabilityService),
       createBookAppointmentTool(context, bookingService),
+      createGetAppointmentDetailsTool(context, bookingService),
       createUpdateAppointmentTool(context, bookingService),
       createRequestHumanTransferTool(context, callRepository),
     ],

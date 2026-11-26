@@ -52,6 +52,10 @@ export interface AppointmentRepository {
     context: BusinessContext,
     appointmentId: string,
   ): Promise<AppointmentRecord | null>;
+  getAppointmentByCode?(
+    context: BusinessContext,
+    bookingCode: string,
+  ): Promise<AppointmentRecord | null>;
   listAppointments?(context: BusinessContext, limit?: number): Promise<AppointmentRecord[]>;
   updateAppointmentDetails?(
     context: BusinessContext,
@@ -583,6 +587,27 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
     }, this.pool ?? getDbPool());
   }
 
+  async getAppointmentByCode(
+    context: BusinessContext,
+    bookingCode: string,
+  ): Promise<AppointmentRecord | null> {
+    const normalized = bookingCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (!normalized) return null;
+    const targetPool = this.pool ?? getDbPool();
+    const result = await targetPool.query<AppointmentRow>(
+      `
+      SELECT *
+      FROM aibitsol.appointments
+      WHERE business_id = $1
+        AND UPPER(booking_code) = $2
+      LIMIT 1
+      `,
+      [context.businessId, normalized],
+    );
+    const row = result.rows[0];
+    return row ? mapAppointmentRow(row) : null;
+  }
+
   async listAppointments(context: BusinessContext, limit = 50): Promise<AppointmentRecord[]> {
     const targetPool = this.pool ?? getDbPool();
     const result = await targetPool.query<AppointmentRow>(
@@ -856,6 +881,23 @@ export class InMemoryAppointmentRepository implements AppointmentRepository {
       return null;
     }
     return { ...appt };
+  }
+
+  async getAppointmentByCode(
+    context: BusinessContext,
+    bookingCode: string,
+  ): Promise<AppointmentRecord | null> {
+    const normalized = bookingCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (!normalized) return null;
+    for (const appt of this.appointments.values()) {
+      if (
+        appt.businessId === context.businessId &&
+        appt.bookingCode?.toUpperCase() === normalized
+      ) {
+        return { ...appt };
+      }
+    }
+    return null;
   }
 
   async updateAppointmentDetails(

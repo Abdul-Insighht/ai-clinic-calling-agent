@@ -9,7 +9,14 @@ export const updateAppointmentParameters = z.object({
   bookingId: z
     .string()
     .min(1)
-    .describe('The exact bookingId returned by bookAppointment in this session.'),
+    .describe('The Booking ID (e.g. BK001, BK039) or UUID of the appointment to update.'),
+  verificationHint: z
+    .string()
+    .min(3)
+    .optional()
+    .describe(
+      'Caller name or phone number on file for privacy verification when updating an appointment from a previous call.',
+    ),
   customerName: z
     .string()
     .min(1)
@@ -44,14 +51,22 @@ export function createUpdateAppointmentTool(
 
     description: `
       Update details (customerName, phone, customerEmail, address, or reason) of an already-booked appointment
-      in PostgreSQL, Google Calendar, Gmail confirmation, and WhatsApp using the exact bookingId from bookAppointment.
-      Call this whenever the caller corrects their name spelling, phone, email, address, or reason after booking.
+      using its Booking ID (e.g. BK001) or UUID, even in a new/follow-up call (pass verificationHint with caller name or phone).
+      Updates PostgreSQL, Google Calendar, and resends Gmail & WhatsApp confirmation.
       Never tell the caller an appointment was updated unless this tool returns success: true.
     `,
 
     parameters: updateAppointmentParameters,
 
-    execute: async ({ bookingId, customerName, phone, customerEmail, address, reason }) => {
+    execute: async ({
+      bookingId,
+      verificationHint,
+      customerName,
+      phone,
+      customerEmail,
+      address,
+      reason,
+    }) => {
       const startedAt = performance.now();
       logger.info('appointment.update.started', {
         businessId: context.businessId,
@@ -61,6 +76,7 @@ export function createUpdateAppointmentTool(
       try {
         const result = await bookingService.updateAppointment(context, {
           bookingId,
+          ...(verificationHint !== undefined ? { verificationHint } : {}),
           ...(customerName !== undefined ? { customerName } : {}),
           ...(phone !== undefined ? { phone } : {}),
           ...(customerEmail !== undefined ? { customerEmail } : {}),
@@ -94,6 +110,8 @@ export function createUpdateAppointmentTool(
 
         return {
           success: true,
+          bookingCode:
+            result.booking.bookingCode || `BK${result.booking.id.slice(0, 6).toUpperCase()}`,
           bookingId: result.booking.id,
           customerName: result.booking.customerName,
           phone: result.booking.phoneE164,

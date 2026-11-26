@@ -8,6 +8,7 @@ import { AvailabilityService } from '../../src/services/availability-service.ts'
 import { BookingService } from '../../src/services/booking-service.ts';
 import { BusinessService } from '../../src/services/business-service.ts';
 import { createBookAppointmentTool } from '../../src/tools/book-appointment.ts';
+import { createGetAppointmentDetailsTool } from '../../src/tools/get-appointment-details.ts';
 import {
   type CalendarAdapter,
   NoopCalendarAdapter,
@@ -348,5 +349,67 @@ describe('Phase 4 — Transactional booking, idempotency, and calendar outbox sy
 
     expect(first.success && first.booking.bookingCode).toBe('BK001');
     expect(second.success && second.booking.bookingCode).toBe('BK002');
+  });
+
+  it('supports cross-call lookup and update by BK001 with caller privacy verification', async () => {
+    const businessService = new BusinessService(new InMemoryBusinessRepository([demoBusiness]));
+    const appointmentRepository = new InMemoryAppointmentRepository();
+    const availability = new AvailabilityService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+    const booking = new BookingService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+
+    const slots = await availability.getAvailableSlots(northstarContext, {
+      requestedDay: 'Monday',
+      now,
+    });
+    const booked = await booking.bookAppointment(northstarContext, {
+      slotId: slots.availableSlots[0]!.slotId,
+      customerName: 'Hafiz Rehman',
+      phone: '03283121702',
+      customerEmail: 'hafizrahman3321@gmail.com',
+      reason: 'General Medical Consultation',
+      idempotencyKey: 'cross-call:1',
+      nowIso: now.toUTC().toISO()!,
+    });
+    expect(booked.success).toBe(true);
+
+    // Simulate a brand new call (different callId)
+    const followUpCallCtx = { businessId: NORTHSTAR_BUSINESS_ID, callId: 'call-2' };
+    const lookupTool = createGetAppointmentDetailsTool(followUpCallCtx, booking);
+
+    // Wrong caller verification must be blocked
+    const denied = (await lookupTool.execute(
+      { bookingCode: 'bk-001', verificationHint: 'Stranger 9999' },
+      {} as never,
+    )) as { success: boolean; error?: string };
+    expect(denied.success).toBe(false);
+    expect(denied.error).toBe('VERIFICATION_FAILED');
+
+    // Correct caller verification (phone last 4 digits) succeeds
+    const found = (await lookupTool.execute(
+      { bookingCode: 'bk-001', verificationHint: '1702' },
+      {} as never,
+    )) as { success: boolean; bookingCode?: string; customerName?: string };
+    expect(found.success).toBe(true);
+    expect(found.bookingCode).toBe('BK001');
+    expect(found.customerName).toBe('Hafiz Rehman');
+
+    // Cross-call update by BK001 with matching caller name fixes email typo
+    const updated = await booking.updateAppointment(followUpCallCtx, {
+      bookingId: 'BK001',
+      verificationHint: 'Hafiz Rehman',
+      customerEmail: 'hafizrehman3321@gmail.com',
+    });
+    expect(updated.success).toBe(true);
+    if (updated.success) {
+      expect(updated.booking.customerEmail).toBe('hafizrehman3321@gmail.com');
+    }
   });
 });

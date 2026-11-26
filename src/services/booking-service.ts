@@ -76,8 +76,58 @@ function toDeterministicCalendarEventId(appointmentId: string): string {
   return `appt${appointmentId.replace(/[^a-f0-9]/gi, '').toLowerCase()}`;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function verifyCallerMatchesAppointment(
+  appointment: AppointmentRecord,
+  verificationHint: string | undefined,
+): boolean {
+  const hint = verificationHint?.trim();
+  if (!hint || hint.length < 3) return false;
+
+  // 1. Match by phone digits (at least last 4 digits)
+  const hintDigits = hint.replace(/\D/g, '');
+  const apptDigits = appointment.phoneE164.replace(/\D/g, '');
+  if (hintDigits.length >= 4 && apptDigits.length >= 4) {
+    if (
+      apptDigits.endsWith(hintDigits) ||
+      hintDigits.endsWith(apptDigits.slice(-7)) ||
+      apptDigits.slice(-4) === hintDigits.slice(-4)
+    ) {
+      return true;
+    }
+  }
+
+  // 2. Match by customer name token (>= 3 chars, case-insensitive)
+  const hintLower = hint.toLowerCase();
+  const nameLower = appointment.customerName.toLowerCase();
+  if (nameLower.includes(hintLower) || hintLower.includes(nameLower)) {
+    return true;
+  }
+  const nameTokens = nameLower.split(/\s+/).filter((t) => t.length >= 3);
+  const hintTokens = hintLower.split(/\s+/).filter((t) => t.length >= 3);
+  return nameTokens.some((nt) => hintTokens.some((ht) => nt.includes(ht) || ht.includes(nt)));
+}
+
+export type LookupAppointmentRequest = {
+  bookingRef: string;
+  verificationHint: string;
+};
+
+export type LookupAppointmentResponse =
+  | {
+      success: true;
+      booking: AppointmentRecord;
+    }
+  | {
+      success: false;
+      error: 'INVALID_INPUT' | 'APPOINTMENT_NOT_FOUND' | 'VERIFICATION_FAILED';
+      message: string;
+    };
+
 export type UpdateAppointmentRequest = {
   bookingId: string;
+  verificationHint?: string;
   customerName?: string;
   phone?: string;
   customerEmail?: string | null;
@@ -95,7 +145,7 @@ export type UpdateAppointmentResponse =
     }
   | {
       success: false;
-      error: 'INVALID_INPUT' | 'APPOINTMENT_NOT_FOUND' | 'UPDATE_NOT_SUPPORTED';
+      error: 'INVALID_INPUT' | 'APPOINTMENT_NOT_FOUND' | 'VERIFICATION_FAILED' | 'UPDATE_NOT_SUPPORTED';
       message: string;
     };
 
@@ -454,6 +504,61 @@ export class BookingService {
     return { synced, failed };
   }
 
+  async resolveAppointment(
+    context: BusinessContext,
+    bookingRef: string,
+  ): Promise<AppointmentRecord | null> {
+    const trimmed = bookingRef.trim();
+    if (!trimmed) return null;
+
+    if (UUID_REGEX.test(trimmed)) {
+      return this.appointmentRepository.getAppointmentById(context, trimmed);
+    }
+
+    if (this.appointmentRepository.getAppointmentByCode) {
+      const byCode = await this.appointmentRepository.getAppointmentByCode(context, trimmed);
+      if (byCode) return byCode;
+    }
+
+    return this.appointmentRepository.getAppointmentById(context, trimmed).catch(() => null);
+  }
+
+  async lookupAppointment(
+    context: BusinessContext,
+    input: LookupAppointmentRequest,
+  ): Promise<LookupAppointmentResponse> {
+    if (!input.bookingRef.trim() || !input.verificationHint.trim()) {
+      return {
+        success: false,
+        error: 'INVALID_INPUT',
+        message: 'Both the booking ID (for example BK001) and the caller name or phone number are required.',
+      };
+    }
+
+    const existing = await this.resolveAppointment(context, input.bookingRef);
+    if (!existing) {
+      return {
+        success: false,
+        error: 'APPOINTMENT_NOT_FOUND',
+        message: 'No appointment was found with that booking ID.',
+      };
+    }
+
+    if (!verifyCallerMatchesAppointment(existing, input.verificationHint)) {
+      return {
+        success: false,
+        error: 'VERIFICATION_FAILED',
+        message:
+          'For privacy, the name or phone number did not match our records for that booking ID. Please ask the caller to verify their name or phone number.',
+      };
+    }
+
+    return {
+      success: true,
+      booking: existing,
+    };
+  }
+
   async updateAppointment(
     context: BusinessContext,
     input: UpdateAppointmentRequest,
@@ -464,6 +569,30 @@ export class BookingService {
         error: 'UPDATE_NOT_SUPPORTED',
         message: 'Updating appointments is not supported in this repository.',
       };
+    }
+
+    const existing = await this.resolveAppointment(context, input.bookingId);
+    if (!existing) {
+      return {
+        success: false,
+        error: 'APPOINTMENT_NOT_FOUND',
+        message: 'No existing appointment was found with that booking ID.',
+      };
+    }
+
+    const isDifferentCall = Boolean(
+      existing.callId && context.callId && existing.callId !== context.callId,
+    );
+    if (input.verificationHint !== undefined || isDifferentCall) {
+      const hint = input.verificationHint ?? input.phone ?? input.customerName;
+      if (!verifyCallerMatchesAppointment(existing, hint)) {
+        return {
+          success: false,
+          error: 'VERIFICATION_FAILED',
+          message:
+            'For privacy, please verify the caller name or phone number on file before updating this booking.',
+        };
+      }
     }
 
     const updates: {
@@ -542,7 +671,7 @@ export class BookingService {
 
     const updated = await this.appointmentRepository.updateAppointmentDetails(
       context,
-      input.bookingId,
+      existing.id,
       updates,
     );
 
@@ -556,8 +685,9 @@ export class BookingService {
 
     const business = await this.businessService.getBusinessProfile(context);
     const calendarId = business.googleCalendarId ?? getAppConfig().calendar.calendarId;
+    const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
 
-    if (updated.customerEmail) {
+    if (!isTestEnv && updated.customerEmail) {
       void sendAppointmentConfirmationEmail({
         toEmail: updated.customerEmail,
         businessName: business.name,
@@ -567,7 +697,7 @@ export class BookingService {
       });
     }
 
-    if (updated.phoneE164) {
+    if (!isTestEnv && updated.phoneE164) {
       void sendAppointmentConfirmationWhatsApp({
         toPhone: updated.phoneE164,
         businessName: business.name,
