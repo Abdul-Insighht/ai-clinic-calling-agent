@@ -303,8 +303,8 @@ export default defineAgent({
         noiseCancellation: BackgroundVoiceCancellation(),
       },
       outputOptions: {
-        // Larger audio ring buffer so bursty Gemini confirmation speech never drops frames
-        queueSizeMs: 1000,
+        // Larger 3s audio ring buffer so bursty Gemini long responses never drop or skip frames
+        queueSizeMs: 3000,
       },
       agent: createReceptionistAgent({
         context: sessionContext,
