@@ -66,4 +66,5 @@ export type BusinessProfile = {
 export type BusinessContext = {
   businessId: string;
   callId?: string;
+  userTurnCount?: number;
 };

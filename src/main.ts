@@ -36,6 +36,7 @@ export default defineAgent({
     // Non-blocking call record creation so greeting never waits for DB write
     const sessionContext: BusinessContext = {
       ...baseContext,
+      userTurnCount: 0,
     };
 
     const callRecordPromise = callRepository
@@ -169,18 +170,19 @@ export default defineAgent({
         consecutiveRecoveries = 0;
         clearNoResponseTimer();
       } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
+        sessionContext.userTurnCount = (sessionContext.userTurnCount ?? 0) + 1;
         lastUserSpeechEndAt = performance.now();
         consecutiveRecoveries = 0;
-        // True stall recovery only (5s): never inject a fake "One moment" reply that hijacks Gemini's real turn
-        scheduleNoResponseRecovery(5000, 'no_speech_after_user');
+        // Fast stall recovery (3.0s): never inject a fake "One moment" reply that hijacks Gemini's real turn
+        scheduleNoResponseRecovery(3000, 'no_speech_after_user');
       }
     });
 
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
       toolRanSinceSpeechCreated = true;
-      // Tool already completed & returned — immediately nudge after 1.8s if Gemini stalls silently
+      // Tool already completed & returned — immediately nudge after 1.0s if Gemini stalls silently
       consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(1800, 'silent_after_tool');
+      scheduleNoResponseRecovery(1000, 'silent_after_tool');
     });
 
     session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
@@ -198,9 +200,9 @@ export default defineAgent({
         }
       });
 
-      // Backup 10s safety net: fires ONLY if a speech handle stalls without producing audio
+      // Fast 4.0s safety net: prevents 10-second silent freezes when Gemini stalls on a speech handle
       if (!wasRecovery) {
-        scheduleNoResponseRecovery(10_000, 'speech_stalled_after_tts_timeout');
+        scheduleNoResponseRecovery(4000, 'speech_stalled_after_tts_timeout');
       }
     });
 
@@ -213,8 +215,8 @@ export default defineAgent({
         isRecoverySpeech = false;
         clearNoResponseTimer();
       } else if (ev.oldState === 'thinking' && ev.newState === 'listening') {
-        // Agent finished thinking without producing audio — recover quickly in 1.5s
-        scheduleNoResponseRecovery(1500, 'silent_after_thinking');
+        // Agent finished thinking without producing audio — recover immediately in 0.8s
+        scheduleNoResponseRecovery(800, 'silent_after_thinking');
       }
 
       if (ev.newState === 'thinking') {

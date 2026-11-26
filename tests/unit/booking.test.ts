@@ -292,7 +292,7 @@ describe('Phase 4 — Transactional booking, idempotency, and calendar outbox sy
 
     const slots = await availability.getAvailableSlots(northstarContext, {
       requestedDay: 'Monday',
-      now,
+      now: DateTime.now().setZone(demoBusiness.timezone),
     });
     const chosen = slots.availableSlots[0]!;
     const toolDef = createBookAppointmentTool(northstarContext, booking);
@@ -312,6 +312,44 @@ describe('Phase 4 — Transactional booking, idempotency, and calendar outbox sy
     expect(blocked.error).toBe('CONFIRMATION_REQUIRED');
     const saved = await appointmentRepository.listAppointments(northstarContext);
     expect(saved).toHaveLength(0);
+
+    // Live voice session 2-phase turn guard: even if LLM prematurely passes callerConfirmedDetails: true
+    // on the same user turn, block until caller actually speaks a new confirmation turn AND return spelled email.
+    const liveVoiceContext = { ...northstarContext, callId: 'live-call-1', userTurnCount: 5 };
+    const liveTool = createBookAppointmentTool(liveVoiceContext, booking);
+    const premature = (await liveTool.execute(
+      {
+        slotId: chosen.slotId,
+        customerName: 'Abdul Rehman',
+        phone: '03283121702',
+        customerEmail: 'hafizrehman3321@gmail.com',
+        reason: 'General Medical Consultation',
+        callerConfirmedDetails: true,
+      },
+      {} as never,
+    )) as { success: boolean; error?: string; spelledEmailForReadback?: string };
+
+    expect(premature.success).toBe(false);
+    expect(premature.error).toBe('CONFIRMATION_REQUIRED');
+    expect(premature.spelledEmailForReadback).toContain('R - E - H - M - A - N');
+    expect(await appointmentRepository.listAppointments(northstarContext)).toHaveLength(0);
+
+    // After caller speaks explicit confirmation in the next turn (userTurnCount increments), booking succeeds
+    liveVoiceContext.userTurnCount = 6;
+    const confirmed = (await liveTool.execute(
+      {
+        slotId: chosen.slotId,
+        customerName: 'Abdul Rehman',
+        phone: '03283121702',
+        customerEmail: 'hafizrehman3321@gmail.com',
+        reason: 'General Medical Consultation',
+        callerConfirmedDetails: true,
+      },
+      {} as never,
+    )) as { success: boolean; bookingCode?: string };
+
+    expect(confirmed.success).toBe(true);
+    expect(confirmed.bookingCode).toBe('BK001');
   });
 
   it('assigns clean sequential human-friendly booking codes (BK001, BK002)', async () => {

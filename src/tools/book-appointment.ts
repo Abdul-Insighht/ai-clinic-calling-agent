@@ -43,16 +43,34 @@ export const bookAppointmentParameters = z.object({
     ),
 });
 
+function spellEmailForVoice(email?: string): string | null {
+  if (!email) return null;
+  const cleaned = email.trim().toLowerCase();
+  const [local, domain] = cleaned.split('@');
+  if (!local || !domain) return cleaned;
+  const spelledLocal = local
+    .split('')
+    .map((ch) => (ch === '.' ? 'dot' : ch === '_' ? 'underscore' : ch === '-' ? 'dash' : ch.toUpperCase()))
+    .join(' - ');
+  return `${spelledLocal} at ${domain.replace(/\./g, ' dot ')}`;
+}
+
 export function createBookAppointmentTool(context: BusinessContext, bookingService: BookingService) {
+  let pendingDraft: {
+    slotId: string;
+    normalizedEmail: string;
+    userTurnCountAtDraft: number;
+  } | null = null;
+
   return tool({
     name: 'bookAppointment',
 
     description: `
       Book one verified appointment using the exact slotId from the latest
-      getAvailableAppointments result ONLY AFTER reading back all details and receiving explicit caller confirmation (callerConfirmedDetails: true).
-      Never call this tool before the caller explicitly says yes to the read-back summary.
+      getAvailableAppointments result ONLY AFTER reading back all details (including spelling the email letter-by-letter) and receiving explicit caller confirmation (callerConfirmedDetails: true).
+      CRITICAL: Copy the caller's spelled email letters EXACTLY without autocorrecting names (for example keep "rehman" as "rehman", NEVER change it to "rahman").
       Never claim the appointment is booked unless this tool returns success: true.
-      If the slot is expired or unavailable, call getAvailableAppointments again.
+      If the tool returns CONFIRMATION_REQUIRED, immediately read back the exact summary and spelledEmailForReadback and wait for the caller to say yes in their next turn before calling again.
     `,
 
     parameters: bookAppointmentParameters,
@@ -67,18 +85,48 @@ export function createBookAppointmentTool(context: BusinessContext, bookingServi
       callerConfirmedDetails,
     }) => {
       const startedAt = performance.now();
-      if (!callerConfirmedDetails) {
+      const normalizedEmail = (customerEmail ?? '').trim().toLowerCase();
+      const spelledEmailForReadback = spellEmailForVoice(customerEmail);
+
+      // Phase-1 / Turn-Verified Confirmation Guard:
+      // In live voice sessions (context.userTurnCount !== undefined), it is code-enforced that:
+      // 1) A draft readback MUST happen first, returning the exact spelledEmailForReadback of the string we received.
+      // 2) The caller MUST speak a subsequent confirmation turn (userTurnCount > userTurnCountAtDraft)
+      //    for this exact slotId + normalizedEmail before any DB write, Email, or WhatsApp is allowed!
+      const isLiveVoiceSession = typeof context.userTurnCount === 'number';
+      const draftMatchesAndCallerReplied =
+        pendingDraft !== null &&
+        pendingDraft.slotId === slotId &&
+        pendingDraft.normalizedEmail === normalizedEmail &&
+        (!isLiveVoiceSession || (context.userTurnCount ?? 0) > pendingDraft.userTurnCountAtDraft);
+
+      if (!callerConfirmedDetails || (isLiveVoiceSession && !draftMatchesAndCallerReplied)) {
+        if (isLiveVoiceSession) {
+          pendingDraft = {
+            slotId,
+            normalizedEmail,
+            userTurnCountAtDraft: context.userTurnCount ?? 0,
+          };
+        }
         logger.warn('appointment.booking.blocked_unconfirmed', {
           businessId: context.businessId,
           slotId,
+          callerConfirmedDetails,
+          userTurnCount: context.userTurnCount ?? null,
+          spelledEmailForReadback,
         });
         return {
           success: false,
           error: 'CONFIRMATION_REQUIRED',
-          message:
-            'Booking blocked: read back the service, date/time, full name, phone number, address, and email to the caller first, and wait for them to explicitly confirm before calling bookAppointment with callerConfirmedDetails: true.',
+          spelledEmailForReadback,
+          message: spelledEmailForReadback
+            ? `NOT BOOKED YET. Read back these EXACT details to the caller right now — Name: ${customerName}, Phone: ${phone}, Address: ${address || 'not provided'}, Service: ${reason}, and spell the EXACT email letter-by-letter as: "${spelledEmailForReadback}". Ask: "Please confirm if all details and this exact email spelling are correct." STOP and wait for the caller to reply Yes before calling bookAppointment again.`
+            : `NOT BOOKED YET. Read back these EXACT details to the caller right now — Name: ${customerName}, Phone: ${phone}, Address: ${address || 'not provided'}, Service: ${reason}. Ask: "Please confirm if all details are correct." STOP and wait for the caller to reply Yes before calling bookAppointment again.`,
         };
       }
+
+      // Clear draft once caller has explicitly confirmed in a new turn
+      pendingDraft = null;
 
       logger.info('appointment.booking.started', {
         businessId: context.businessId,
