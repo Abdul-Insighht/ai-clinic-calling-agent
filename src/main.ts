@@ -103,7 +103,6 @@ export default defineAgent({
     let lastUserSpeechEndAt: number | null = null;
     let lastAgentThinkingAt: number | null = null;
     let noResponseTimer: ReturnType<typeof setTimeout> | null = null;
-    let waitFollowUpTimer: ReturnType<typeof setTimeout> | null = null;
     let sessionActive = true;
     let consecutiveRecoveries = 0;
     let isRecoverySpeech = false;
@@ -111,41 +110,11 @@ export default defineAgent({
     let spokeSinceSpeechCreated = false;
     let toolRanSinceSpeechCreated = false;
 
-    const clearWaitFollowUpTimer = () => {
-      if (waitFollowUpTimer) {
-        clearTimeout(waitFollowUpTimer);
-        waitFollowUpTimer = null;
-      }
-    };
-
     const clearNoResponseTimer = () => {
-      clearWaitFollowUpTimer();
       if (noResponseTimer) {
         clearTimeout(noResponseTimer);
         noResponseTimer = null;
       }
-    };
-
-    // Gentle non-interrupting follow-up message when a response/tool takes >3.5s
-    // (Never calls session.interrupt so in-flight tool calls finish cleanly!)
-    const scheduleWaitFollowUp = (delayMs: number) => {
-      clearWaitFollowUpTimer();
-      waitFollowUpTimer = setTimeout(() => {
-        waitFollowUpTimer = null;
-        if (!sessionActive || isAgentSpeaking) return;
-        logger.info('voice.turn.wait_followup', {
-          callId: sessionContext.callId ?? 'pending',
-          thresholdMs: delayMs,
-        });
-        try {
-          session.generateReply({
-            instructions:
-              'Speak one very brief, warm reassurance (4-7 words) while you finish checking, like "One moment, checking that for you now." or "Just a second, almost got that ready."',
-          });
-        } catch {
-          // Ignore if session is busy
-        }
-      }, delayMs);
     };
 
     const scheduleNoResponseRecovery = (delayMs: number, reason: string) => {
@@ -155,7 +124,6 @@ export default defineAgent({
       }
       noResponseTimer = setTimeout(() => {
         noResponseTimer = null;
-        clearWaitFollowUpTimer();
         // NEVER interrupt Sarah if she is actively speaking (prevents mid-confirmation cutoffs)
         if (!sessionActive || isAgentSpeaking) return;
         if (consecutiveRecoveries >= 2) {
@@ -186,8 +154,8 @@ export default defineAgent({
             session.generateReply({
               instructions:
                 reason === 'silent_after_tool' || reason === 'silent_after_thinking'
-                  ? 'The last action just completed. Immediately speak a warm, clear confirmation of the result in 1-2 steady sentences (confirming their booked appointment details, email, and WhatsApp confirmation if booked) and ALWAYS ask a friendly follow-up like "Is there anything else I can help you with today?"'
-                  : 'Politely tell the caller in one short sentence: "Sorry, I didn\'t quite catch that. Could you please repeat?"',
+                  ? 'The last action just completed. Immediately speak a warm, clear answer or confirmation of the result in 1-2 steady sentences (never say "one moment" or "please hold") and ask a friendly follow-up like "Is there anything else I can help you with today?"'
+                  : 'Directly answer the caller\'s last message right now in 1-2 short, warm sentences. Never say "one moment" or "please hold". If audio was unclear, politely ask them to repeat.',
             });
           } catch {
             isRecoverySpeech = false;
@@ -203,19 +171,16 @@ export default defineAgent({
       } else if (ev.oldState === 'speaking' && ev.newState === 'listening') {
         lastUserSpeechEndAt = performance.now();
         consecutiveRecoveries = 0;
-        // Stage 1 (1.2s): Immediate warm non-interrupting follow-up if Sarah hasn't started speaking yet
-        scheduleWaitFollowUp(1200);
-        // Stage 2 (9.5s): Full recovery if completely stalled
-        scheduleNoResponseRecovery(9500, 'no_speech_after_user');
+        // True stall recovery only (5s): never inject a fake "One moment" reply that hijacks Gemini's real turn
+        scheduleNoResponseRecovery(5000, 'no_speech_after_user');
       }
     });
 
     session.on(voice.AgentSessionEventTypes.FunctionToolsExecuted, () => {
       toolRanSinceSpeechCreated = true;
-      clearWaitFollowUpTimer();
-      // Tool already completed & returned — immediately nudge after 2.0s if Gemini stalls silently
+      // Tool already completed & returned — immediately nudge after 1.8s if Gemini stalls silently
       consecutiveRecoveries = 0;
-      scheduleNoResponseRecovery(2000, 'silent_after_tool');
+      scheduleNoResponseRecovery(1800, 'silent_after_tool');
     });
 
     session.on(voice.AgentSessionEventTypes.SpeechCreated, (ev) => {
@@ -233,10 +198,9 @@ export default defineAgent({
         }
       });
 
-      // Backup 12s safety net: fires ONLY after LiveKit's 10s TTS idle timeout
-      // (so it NEVER kills an in-flight tool call, yet guarantees we never sit in 30s silence)
+      // Backup 10s safety net: fires ONLY if a speech handle stalls without producing audio
       if (!wasRecovery) {
-        scheduleNoResponseRecovery(12_000, 'speech_stalled_after_tts_timeout');
+        scheduleNoResponseRecovery(10_000, 'speech_stalled_after_tts_timeout');
       }
     });
 
@@ -249,16 +213,12 @@ export default defineAgent({
         isRecoverySpeech = false;
         clearNoResponseTimer();
       } else if (ev.oldState === 'thinking' && ev.newState === 'listening') {
-        // Agent finished thinking without producing audio — recover after 3s
-        scheduleNoResponseRecovery(3000, 'silent_after_thinking');
+        // Agent finished thinking without producing audio — recover quickly in 1.5s
+        scheduleNoResponseRecovery(1500, 'silent_after_thinking');
       }
 
       if (ev.newState === 'thinking') {
         lastAgentThinkingAt = now;
-        // Also schedule 1.2s warm follow-up whenever agent enters thinking/tool-execution
-        if (!waitFollowUpTimer && !isAgentSpeaking) {
-          scheduleWaitFollowUp(1200);
-        }
       } else if (ev.newState === 'speaking' && lastUserSpeechEndAt !== null) {
         logger.info('voice.turn.latency', {
           callId: sessionContext.callId,
