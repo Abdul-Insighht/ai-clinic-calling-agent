@@ -8,7 +8,9 @@ import { AvailabilityService } from '../../src/services/availability-service.ts'
 import { BookingService } from '../../src/services/booking-service.ts';
 import { BusinessService } from '../../src/services/business-service.ts';
 import { createBookAppointmentTool } from '../../src/tools/book-appointment.ts';
+import { createCancelAppointmentTool } from '../../src/tools/cancel-appointment.ts';
 import { createGetAppointmentDetailsTool } from '../../src/tools/get-appointment-details.ts';
+import { createRescheduleAppointmentTool } from '../../src/tools/reschedule-appointment.ts';
 import {
   type CalendarAdapter,
   NoopCalendarAdapter,
@@ -411,5 +413,87 @@ describe('Phase 4 — Transactional booking, idempotency, and calendar outbox sy
     if (updated.success) {
       expect(updated.booking.customerEmail).toBe('hafizrehman3321@gmail.com');
     }
+  });
+
+  it('supports rescheduling and cancelling an appointment by BK001 and releases the slot', async () => {
+    const businessService = new BusinessService(new InMemoryBusinessRepository([demoBusiness]));
+    const appointmentRepository = new InMemoryAppointmentRepository();
+    const availability = new AvailabilityService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+    const booking = new BookingService({
+      businessService,
+      appointmentRepository,
+      calendarAdapter: new NoopCalendarAdapter(),
+    });
+
+    const slots = await availability.getAvailableSlots(northstarContext, {
+      requestedDay: 'Monday',
+      now,
+    });
+    const booked = await booking.bookAppointment(northstarContext, {
+      slotId: slots.availableSlots[0]!.slotId,
+      customerName: 'Ayesha Khan',
+      phone: '03283121702',
+      reason: 'General Medical Consultation',
+      idempotencyKey: 'cancel-reschedule:1',
+      nowIso: now.toUTC().toISO()!,
+    });
+    expect(booked.success).toBe(true);
+    if (!booked.success) return;
+
+    // Reschedule BK001 to slot 1
+    const rescheduleTool = createRescheduleAppointmentTool(northstarContext, booking);
+    const blockedResched = (await rescheduleTool.execute(
+      {
+        bookingCode: 'BK001',
+        newSlotId: slots.availableSlots[1]!.slotId,
+        verificationHint: '1702',
+        callerConfirmedReschedule: false,
+      },
+      {} as never,
+    )) as { success: boolean; error?: string };
+    expect(blockedResched.success).toBe(false);
+    expect(blockedResched.error).toBe('CONFIRMATION_REQUIRED');
+
+    const rescheduled = await booking.rescheduleAppointment(northstarContext, {
+      bookingRef: 'BK001',
+      newSlotId: slots.availableSlots[1]!.slotId,
+      verificationHint: 'Ayesha',
+      nowIso: now.toUTC().toISO()!,
+    });
+    expect(rescheduled.success).toBe(true);
+    if (rescheduled.success) {
+      expect(rescheduled.booking.bookingCode).toBe('BK001');
+      expect(Date.parse(rescheduled.booking.startsAt)).toBe(
+        Date.parse(slots.availableSlots[1]!.start),
+      );
+    }
+
+    // Cancel BK001 (requires explicit confirmation)
+    const cancelTool = createCancelAppointmentTool(northstarContext, booking);
+    const blockedCancel = (await cancelTool.execute(
+      { bookingCode: 'BK001', verificationHint: '1702', callerConfirmedCancel: false },
+      {} as never,
+    )) as { success: boolean; error?: string };
+    expect(blockedCancel.success).toBe(false);
+    expect(blockedCancel.error).toBe('CONFIRMATION_REQUIRED');
+
+    const cancelled = (await cancelTool.execute(
+      { bookingCode: 'BK001', verificationHint: '1702', callerConfirmedCancel: true },
+      {} as never,
+    )) as { success: boolean; status?: string };
+    expect(cancelled.success).toBe(true);
+    expect(cancelled.status).toBe('cancelled');
+
+    // Verify slot is now released in busy intervals
+    const busy = await appointmentRepository.listBusyIntervals(
+      northstarContext,
+      slots.availableSlots[1]!.start,
+      slots.availableSlots[1]!.end,
+    );
+    expect(busy).toHaveLength(0);
   });
 });

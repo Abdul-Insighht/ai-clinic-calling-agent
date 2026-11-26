@@ -62,6 +62,23 @@ export interface AppointmentRepository {
     appointmentId: string,
     updates: UpdateAppointmentDetailsInput,
   ): Promise<AppointmentRecord | null>;
+  cancelAppointment?(
+    context: BusinessContext,
+    appointmentId: string,
+  ): Promise<AppointmentRecord | null>;
+  rescheduleAppointment?(
+    context: BusinessContext,
+    appointmentId: string,
+    newSlotToken: string,
+    nowIso?: string,
+  ): Promise<
+    | { success: true; appointment: AppointmentRecord }
+    | {
+        success: false;
+        error: 'APPOINTMENT_NOT_FOUND' | 'SLOT_NOT_FOUND' | 'SLOT_EXPIRED' | 'SLOT_UNAVAILABLE';
+        message: string;
+      }
+  >;
   cleanupExpiredHolds?(context: BusinessContext): Promise<number>;
 }
 
@@ -657,6 +674,133 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
     return row ? mapAppointmentRow(row) : null;
   }
 
+  async cancelAppointment(
+    context: BusinessContext,
+    appointmentId: string,
+  ): Promise<AppointmentRecord | null> {
+    const targetPool = this.pool ?? getDbPool();
+    const result = await targetPool.query<AppointmentRow>(
+      `
+      UPDATE aibitsol.appointments
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE business_id = $1 AND id = $2
+      RETURNING *
+      `,
+      [context.businessId, appointmentId],
+    );
+    const row = result.rows[0];
+    return row ? mapAppointmentRow(row) : null;
+  }
+
+  async rescheduleAppointment(
+    context: BusinessContext,
+    appointmentId: string,
+    newSlotToken: string,
+    nowIso = new Date().toISOString(),
+  ): Promise<
+    | { success: true; appointment: AppointmentRecord }
+    | {
+        success: false;
+        error: 'APPOINTMENT_NOT_FOUND' | 'SLOT_NOT_FOUND' | 'SLOT_EXPIRED' | 'SLOT_UNAVAILABLE';
+        message: string;
+      }
+  > {
+    return withTransaction(async (client) => {
+      const holdRes = await client.query<{
+        id: string;
+        resource_id: string;
+        starts_at: Date;
+        ends_at: Date;
+        timezone: string;
+        expires_at: Date;
+        consumed_at: Date | null;
+      }>(
+        `
+        SELECT id, resource_id, starts_at, ends_at, timezone, expires_at, consumed_at
+        FROM aibitsol.availability_holds
+        WHERE business_id = $1 AND slot_token = $2
+        FOR UPDATE
+        `,
+        [context.businessId, newSlotToken],
+      );
+      const hold = holdRes.rows[0];
+      if (!hold) {
+        return {
+          success: false as const,
+          error: 'SLOT_NOT_FOUND' as const,
+          message: 'That new time slot is no longer valid. Please check availability again.',
+        };
+      }
+      if (hold.consumed_at !== null) {
+        return {
+          success: false as const,
+          error: 'SLOT_UNAVAILABLE' as const,
+          message: 'That new time slot is no longer available.',
+        };
+      }
+      if (hold.expires_at.getTime() <= Date.parse(nowIso)) {
+        return {
+          success: false as const,
+          error: 'SLOT_EXPIRED' as const,
+          message: 'That slot hold expired. Please check availability again.',
+        };
+      }
+
+      const overlapRes = await client.query(
+        `
+        SELECT 1 FROM aibitsol.appointments
+        WHERE business_id = $1
+          AND id <> $2
+          AND resource_id = $3
+          AND status IN ('pending', 'pending_calendar_sync', 'confirmed')
+          AND starts_at < $5::timestamptz
+          AND ends_at > $4::timestamptz
+        LIMIT 1
+        `,
+        [context.businessId, appointmentId, hold.resource_id, hold.starts_at, hold.ends_at],
+      );
+      if (overlapRes.rows.length > 0) {
+        return {
+          success: false as const,
+          error: 'SLOT_UNAVAILABLE' as const,
+          message: 'That new time slot was just booked. Please pick another open slot.',
+        };
+      }
+
+      const updated = await client.query<AppointmentRow>(
+        `
+        UPDATE aibitsol.appointments
+        SET starts_at = $3,
+            ends_at = $4,
+            timezone = $5,
+            status = 'confirmed',
+            updated_at = NOW()
+        WHERE business_id = $1 AND id = $2
+        RETURNING *
+        `,
+        [context.businessId, appointmentId, hold.starts_at, hold.ends_at, hold.timezone],
+      );
+      const row = updated.rows[0];
+      if (!row) {
+        return {
+          success: false as const,
+          error: 'APPOINTMENT_NOT_FOUND' as const,
+          message: 'No existing appointment was found with that booking ID.',
+        };
+      }
+
+      await client.query(
+        `UPDATE aibitsol.availability_holds SET consumed_at = NOW() WHERE id = $1`,
+        [hold.id],
+      );
+
+      return {
+        success: true as const,
+        appointment: mapAppointmentRow(row),
+      };
+    }, this.pool ?? getDbPool());
+  }
+
   async cleanupExpiredHolds(context: BusinessContext): Promise<number> {
     return withTransaction(async (client) => {
       const result = await client.query(
@@ -915,6 +1059,88 @@ export class InMemoryAppointmentRepository implements AppointmentRepository {
     if (updates.address !== undefined) appt.address = updates.address;
     if (updates.reason !== undefined) appt.reason = updates.reason;
     return { ...appt };
+  }
+
+  async cancelAppointment(
+    context: BusinessContext,
+    appointmentId: string,
+  ): Promise<AppointmentRecord | null> {
+    const appt = this.appointments.get(appointmentId);
+    if (!appt || appt.businessId !== context.businessId) {
+      return null;
+    }
+    appt.status = 'cancelled';
+    return { ...appt };
+  }
+
+  async rescheduleAppointment(
+    context: BusinessContext,
+    appointmentId: string,
+    newSlotToken: string,
+    nowIso = new Date().toISOString(),
+  ): Promise<
+    | { success: true; appointment: AppointmentRecord }
+    | {
+        success: false;
+        error: 'APPOINTMENT_NOT_FOUND' | 'SLOT_NOT_FOUND' | 'SLOT_EXPIRED' | 'SLOT_UNAVAILABLE';
+        message: string;
+      }
+  > {
+    const appt = this.appointments.get(appointmentId);
+    if (!appt || appt.businessId !== context.businessId) {
+      return {
+        success: false,
+        error: 'APPOINTMENT_NOT_FOUND',
+        message: 'No existing appointment was found with that booking ID.',
+      };
+    }
+    const hold = this.holds.get(newSlotToken);
+    if (!hold || hold.businessId !== context.businessId) {
+      return {
+        success: false,
+        error: 'SLOT_NOT_FOUND',
+        message: 'That new time slot is no longer valid.',
+      };
+    }
+    if (hold.consumedAt !== null) {
+      return {
+        success: false,
+        error: 'SLOT_UNAVAILABLE',
+        message: 'That new time slot is no longer available.',
+      };
+    }
+    if (Date.parse(hold.expiresAt) <= Date.parse(nowIso)) {
+      return {
+        success: false,
+        error: 'SLOT_EXPIRED',
+        message: 'That slot hold expired.',
+      };
+    }
+    for (const other of this.appointments.values()) {
+      if (
+        other.id !== appointmentId &&
+        other.businessId === context.businessId &&
+        other.resourceId === hold.resourceId &&
+        (other.status === 'pending' ||
+          other.status === 'pending_calendar_sync' ||
+          other.status === 'confirmed') &&
+        intervalsOverlap(other.startsAt, other.endsAt, hold.startsAt, hold.endsAt)
+      ) {
+        return {
+          success: false,
+          error: 'SLOT_UNAVAILABLE',
+          message: 'That new time slot is already booked.',
+        };
+      }
+    }
+
+    appt.startsAt = hold.startsAt;
+    appt.endsAt = hold.endsAt;
+    appt.timezone = hold.timezone;
+    appt.label = hold.label;
+    appt.status = 'confirmed';
+    hold.consumedAt = nowIso;
+    return { success: true, appointment: { ...appt } };
   }
 
   async listAppointments(context: BusinessContext, limit = 50): Promise<AppointmentRecord[]> {

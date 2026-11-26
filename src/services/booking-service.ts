@@ -763,4 +763,251 @@ export class BookingService {
         : 'The appointment details were updated in the database.',
     };
   }
+
+  async cancelAppointment(
+    context: BusinessContext,
+    input: {
+      bookingRef: string;
+      verificationHint: string;
+      asyncCalendarSync?: boolean;
+    },
+  ): Promise<
+    | { success: true; booking: AppointmentRecord; calendarCancelled: boolean }
+    | {
+        success: false;
+        error:
+          | 'INVALID_INPUT'
+          | 'APPOINTMENT_NOT_FOUND'
+          | 'VERIFICATION_FAILED'
+          | 'ALREADY_CANCELLED'
+          | 'CANCEL_NOT_SUPPORTED';
+        message: string;
+      }
+  > {
+    if (!this.appointmentRepository.cancelAppointment) {
+      return {
+        success: false,
+        error: 'CANCEL_NOT_SUPPORTED',
+        message: 'Cancelling appointments is not supported in this repository.',
+      };
+    }
+
+    const existing = await this.resolveAppointment(context, input.bookingRef);
+    if (!existing) {
+      return {
+        success: false,
+        error: 'APPOINTMENT_NOT_FOUND',
+        message: 'No appointment was found with that booking ID.',
+      };
+    }
+
+    if (!verifyCallerMatchesAppointment(existing, input.verificationHint)) {
+      return {
+        success: false,
+        error: 'VERIFICATION_FAILED',
+        message: 'For privacy, the name or phone number did not match our records for that booking ID.',
+      };
+    }
+
+    if (existing.status === 'cancelled') {
+      return {
+        success: false,
+        error: 'ALREADY_CANCELLED',
+        message: 'That appointment is already cancelled.',
+      };
+    }
+
+    const cancelled = await this.appointmentRepository.cancelAppointment(context, existing.id);
+    if (!cancelled) {
+      return {
+        success: false,
+        error: 'APPOINTMENT_NOT_FOUND',
+        message: 'No appointment was found with that booking ID.',
+      };
+    }
+
+    const business = await this.businessService.getBusinessProfile(context);
+    const calendarId = business.googleCalendarId ?? getAppConfig().calendar.calendarId;
+    const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
+
+    if (!isTestEnv && cancelled.customerEmail) {
+      void sendAppointmentConfirmationEmail({
+        toEmail: cancelled.customerEmail,
+        businessName: business.name,
+        businessLocation: business.location,
+        booking: cancelled,
+        isCancelled: true,
+      });
+    }
+
+    if (!isTestEnv && cancelled.phoneE164) {
+      void sendAppointmentConfirmationWhatsApp({
+        toPhone: cancelled.phoneE164,
+        businessName: business.name,
+        businessLocation: business.location,
+        booking: cancelled,
+        isCancelled: true,
+      });
+    }
+
+    let calendarCancelled = false;
+    if (calendarId && this.calendarAdapter.isConfigured(calendarId)) {
+      const eventId = cancelled.googleEventId ?? toDeterministicCalendarEventId(cancelled.id);
+      if (input.asyncCalendarSync) {
+        void this.calendarAdapter.cancelEvent({ calendarId, eventId }).catch((error) => {
+          logger.warn('booking.calendar_cancel.background_failed', {
+            businessId: context.businessId,
+            appointmentId: cancelled.id,
+            eventId,
+            error,
+          });
+        });
+        calendarCancelled = true;
+      } else {
+        try {
+          await this.calendarAdapter.cancelEvent({ calendarId, eventId });
+          calendarCancelled = true;
+        } catch (error) {
+          logger.warn('booking.calendar_cancel.failed', {
+            businessId: context.businessId,
+            appointmentId: cancelled.id,
+            eventId,
+            error,
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      booking: cancelled,
+      calendarCancelled,
+    };
+  }
+
+  async rescheduleAppointment(
+    context: BusinessContext,
+    input: {
+      bookingRef: string;
+      newSlotId: string;
+      verificationHint: string;
+      nowIso?: string;
+      asyncCalendarSync?: boolean;
+    },
+  ): Promise<
+    | { success: true; booking: AppointmentRecord; calendarUpdated: boolean }
+    | {
+        success: false;
+        error:
+          | 'INVALID_INPUT'
+          | 'APPOINTMENT_NOT_FOUND'
+          | 'VERIFICATION_FAILED'
+          | 'SLOT_NOT_FOUND'
+          | 'SLOT_EXPIRED'
+          | 'SLOT_UNAVAILABLE'
+          | 'RESCHEDULE_NOT_SUPPORTED';
+        message: string;
+      }
+  > {
+    if (!this.appointmentRepository.rescheduleAppointment) {
+      return {
+        success: false,
+        error: 'RESCHEDULE_NOT_SUPPORTED',
+        message: 'Rescheduling appointments is not supported in this repository.',
+      };
+    }
+
+    const existing = await this.resolveAppointment(context, input.bookingRef);
+    if (!existing) {
+      return {
+        success: false,
+        error: 'APPOINTMENT_NOT_FOUND',
+        message: 'No appointment was found with that booking ID.',
+      };
+    }
+
+    if (!verifyCallerMatchesAppointment(existing, input.verificationHint)) {
+      return {
+        success: false,
+        error: 'VERIFICATION_FAILED',
+        message: 'For privacy, the name or phone number did not match our records for that booking ID.',
+      };
+    }
+
+    const res = await this.appointmentRepository.rescheduleAppointment(
+      context,
+      existing.id,
+      input.newSlotId,
+      input.nowIso,
+    );
+    if (!res.success) {
+      return res;
+    }
+
+    const updated = res.appointment;
+    const business = await this.businessService.getBusinessProfile(context);
+    const calendarId = business.googleCalendarId ?? getAppConfig().calendar.calendarId;
+    const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test');
+
+    if (!isTestEnv && updated.customerEmail) {
+      void sendAppointmentConfirmationEmail({
+        toEmail: updated.customerEmail,
+        businessName: business.name,
+        businessLocation: business.location,
+        booking: updated,
+        isRescheduled: true,
+      });
+    }
+
+    if (!isTestEnv && updated.phoneE164) {
+      void sendAppointmentConfirmationWhatsApp({
+        toPhone: updated.phoneE164,
+        businessName: business.name,
+        businessLocation: business.location,
+        booking: updated,
+        isRescheduled: true,
+      });
+    }
+
+    let calendarUpdated = false;
+    if (calendarId && this.calendarAdapter.isConfigured(calendarId) && this.calendarAdapter.updateEvent) {
+      const eventId = updated.googleEventId ?? toDeterministicCalendarEventId(updated.id);
+      const patchPayload = {
+        calendarId,
+        eventId,
+        startsAt: updated.startsAt,
+        endsAt: updated.endsAt,
+        timeZone: updated.timezone,
+      };
+      if (input.asyncCalendarSync) {
+        void this.calendarAdapter.updateEvent(patchPayload).catch((error) => {
+          logger.warn('booking.calendar_reschedule.background_failed', {
+            businessId: context.businessId,
+            appointmentId: updated.id,
+            eventId,
+            error,
+          });
+        });
+        calendarUpdated = true;
+      } else {
+        try {
+          await this.calendarAdapter.updateEvent(patchPayload);
+          calendarUpdated = true;
+        } catch (error) {
+          logger.warn('booking.calendar_reschedule.failed', {
+            businessId: context.businessId,
+            appointmentId: updated.id,
+            eventId,
+            error,
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      booking: updated,
+      calendarUpdated,
+    };
+  }
 }

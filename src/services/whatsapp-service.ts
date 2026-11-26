@@ -8,6 +8,8 @@ export type BookingWhatsAppPayload = {
   businessLocation?: string;
   booking: AppointmentRecord;
   isUpdate?: boolean;
+  isCancelled?: boolean;
+  isRescheduled?: boolean;
 };
 
 export type WhatsAppSendResult = {
@@ -40,7 +42,7 @@ export function formatWhatsAppRecipient(rawPhone: string): string | null {
 }
 
 function buildConfirmationText(payload: BookingWhatsAppPayload): string {
-  const { booking, businessName, businessLocation, isUpdate } = payload;
+  const { booking, businessName, businessLocation, isUpdate, isCancelled, isRescheduled } = payload;
   const tz = booking.timezone || 'Asia/Karachi';
   const startLocal = DateTime.fromISO(booking.startsAt, { zone: 'utc' }).setZone(tz);
   const endLocal = DateTime.fromISO(booking.endsAt, { zone: 'utc' }).setZone(tz);
@@ -54,10 +56,20 @@ function buildConfirmationText(payload: BookingWhatsAppPayload): string {
       : booking.startsAt;
   const shortRef = booking.bookingCode || `BK${booking.id.slice(0, 6).toUpperCase()}`;
 
-  const heading = isUpdate ? 'Appointment Updated' : 'Appointment Confirmed';
-  const intro = isUpdate
-    ? `Hi ${booking.customerName}, your appointment details with ${businessName} have been updated:`
-    : `Hi ${booking.customerName}, thank you for booking with ${businessName}! Here are your confirmed appointment details:`;
+  const heading = isCancelled
+    ? 'Appointment Cancelled'
+    : isRescheduled
+      ? 'Appointment Rescheduled'
+      : isUpdate
+        ? 'Appointment Updated'
+        : 'Appointment Confirmed';
+  const intro = isCancelled
+    ? `Hi ${booking.customerName}, your appointment (${shortRef}) with ${businessName} has been cancelled as requested:`
+    : isRescheduled
+      ? `Hi ${booking.customerName}, your appointment (${shortRef}) with ${businessName} has been rescheduled to a new time:`
+      : isUpdate
+        ? `Hi ${booking.customerName}, your appointment details with ${businessName} have been updated:`
+        : `Hi ${booking.customerName}, thank you for booking with ${businessName}! Here are your confirmed appointment details:`;
 
   return [
     `*${businessName}*`,

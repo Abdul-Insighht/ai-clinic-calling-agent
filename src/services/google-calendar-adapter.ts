@@ -26,6 +26,9 @@ export type UpdateCalendarEventInput = {
   eventId: string;
   summary?: string;
   description?: string;
+  startsAt?: string;
+  endsAt?: string;
+  timeZone?: string;
 };
 
 export interface CalendarAdapter {
@@ -242,10 +245,19 @@ export class GoogleCalendarAdapter implements CalendarAdapter {
         requestBody: {
           ...(input.summary !== undefined ? { summary: input.summary } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.startsAt
+            ? { start: { dateTime: input.startsAt, ...(input.timeZone ? { timeZone: input.timeZone } : {}) } }
+            : {}),
+          ...(input.endsAt
+            ? { end: { dateTime: input.endsAt, ...(input.timeZone ? { timeZone: input.timeZone } : {}) } }
+            : {}),
         },
       },
       { timeout: CALENDAR_TIMEOUT_MS },
     );
+    if (input.startsAt || input.endsAt) {
+      busyIntervalsCache.clear();
+    }
     logger.info('google_calendar.event.updated', { eventId: input.eventId });
   }
 
