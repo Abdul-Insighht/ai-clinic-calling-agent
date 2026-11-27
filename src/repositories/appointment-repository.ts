@@ -632,7 +632,7 @@ export class PostgresAppointmentRepository implements AppointmentRepository {
       SELECT *
       FROM aibitsol.appointments
       WHERE business_id = $1
-      ORDER BY starts_at DESC
+      ORDER BY created_at DESC, starts_at DESC
       LIMIT $2
       `,
       [context.businessId, limit],
@@ -1146,7 +1146,11 @@ export class InMemoryAppointmentRepository implements AppointmentRepository {
   async listAppointments(context: BusinessContext, limit = 50): Promise<AppointmentRecord[]> {
     return [...this.appointments.values()]
       .filter((a) => a.businessId === context.businessId)
-      .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))
+      .sort(
+        (a, b) =>
+          Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
+          Date.parse(b.startsAt) - Date.parse(a.startsAt),
+      )
       .slice(0, limit)
       .map((a) => ({ ...a }));
   }

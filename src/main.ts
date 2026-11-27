@@ -41,9 +41,11 @@ export default defineAgent({
       userTurnCount: 0,
     };
 
+    const resolvedRoomName = ctx.job.room?.name || ctx.room.name || 'unknown-room';
+
     const callRecordPromise = callRepository
       .startCall(baseContext, {
-        livekitRoomName: ctx.room.name ?? 'unknown-room',
+        livekitRoomName: resolvedRoomName,
       })
       .then((record) => {
         sessionContext.callId = record.id;
@@ -71,7 +73,7 @@ export default defineAgent({
     logger.info('agent.session.starting', {
       businessId: sessionContext.businessId,
       callId: sessionContext.callId ?? 'pending',
-      roomName: ctx.room.name,
+      roomName: resolvedRoomName,
       pipeline: 'gemini_live_3_1',
       model,
       voice: voiceName,

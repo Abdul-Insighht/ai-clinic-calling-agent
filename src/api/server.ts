@@ -299,6 +299,8 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
           timezone: z.string().min(1).optional(),
           pricingPolicy: z.string().min(1).optional(),
           emergencyPolicy: z.string().min(1).optional(),
+          aiVoice: z.string().min(1).optional(),
+          aiModel: z.string().min(1).optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
@@ -318,6 +320,8 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
                 timezone = COALESCE($6, timezone),
                 pricing_policy = COALESCE($7, pricing_policy),
                 emergency_policy = COALESCE($8, emergency_policy),
+                ai_voice = COALESCE($9, ai_voice),
+                ai_model = COALESCE($10, ai_model),
                 updated_at = NOW()
             WHERE id = $1
             `,
@@ -330,6 +334,8 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
               d.timezone ?? null,
               d.pricingPolicy ?? null,
               d.emergencyPolicy ?? null,
+              d.aiVoice ?? null,
+              d.aiModel ?? null,
             ],
           );
           businessService.invalidateProfileCache(context.businessId);
