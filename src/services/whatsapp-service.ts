@@ -6,6 +6,8 @@ export type BookingWhatsAppPayload = {
   toPhone: string;
   businessName: string;
   businessLocation?: string;
+  callerLabel?: string | undefined;
+  locationLabel?: string | undefined;
   booking: AppointmentRecord;
   isUpdate?: boolean;
   isCancelled?: boolean;
@@ -42,7 +44,16 @@ export function formatWhatsAppRecipient(rawPhone: string): string | null {
 }
 
 function buildConfirmationText(payload: BookingWhatsAppPayload): string {
-  const { booking, businessName, businessLocation, isUpdate, isCancelled, isRescheduled } = payload;
+  const {
+    booking,
+    businessName,
+    businessLocation,
+    callerLabel = 'Patient',
+    locationLabel = 'Clinic Location',
+    isUpdate,
+    isCancelled,
+    isRescheduled,
+  } = payload;
   const tz = booking.timezone || 'Asia/Karachi';
   const startLocal = DateTime.fromISO(booking.startsAt, { zone: 'utc' }).setZone(tz);
   const endLocal = DateTime.fromISO(booking.endsAt, { zone: 'utc' }).setZone(tz);
@@ -78,12 +89,12 @@ function buildConfirmationText(payload: BookingWhatsAppPayload): string {
     intro,
     '',
     `*Booking ID:* ${shortRef}`,
-    `*Patient:* ${booking.customerName}`,
+    `*${callerLabel}:* ${booking.customerName}`,
     `*Service / Reason:* ${booking.reason}`,
     `*Date:* ${dateDisplay}`,
     `*Time:* ${timeDisplay}`,
     `*Phone Number:* ${booking.phoneE164}`,
-    `*Clinic Location:* ${businessLocation || 'Main Medical Plaza, City Center'}`,
+    `*${locationLabel}:* ${businessLocation || 'Main Medical Plaza, City Center'}`,
     '',
     `Need to check, reschedule, update, or cancel? Call ${businessName} and mention Booking ID *${shortRef}*.`,
   ].join('\n');

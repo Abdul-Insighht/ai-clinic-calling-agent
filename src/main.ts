@@ -23,7 +23,7 @@ export default defineAgent({
   entry: async (ctx) => {
     const runtimeConfig = getAppConfig();
     const baseContext: BusinessContext = {
-      businessId: NORTHSTAR_BUSINESS_ID,
+      businessId: process.env.ACTIVE_BUSINESS_ID?.trim() || NORTHSTAR_BUSINESS_ID,
     };
 
     const businessService = sharedBusinessService;

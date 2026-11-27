@@ -30,6 +30,7 @@ import { createGetBusinessInformationTool } from '../tools/get-business-informat
 import { createRequestHumanTransferTool } from '../tools/request-human-transfer.ts';
 import { createRescheduleAppointmentTool } from '../tools/reschedule-appointment.ts';
 import { createUpdateAppointmentTool } from '../tools/update-appointment.ts';
+import { compileOrganizationPrompt } from '../config/organization-compiler.ts';
 import { buildReceptionistPrompt } from './prompt.ts';
 
 export type ReceptionistAgentOptions = {
@@ -85,7 +86,9 @@ export function createReceptionistAgent(options: ReceptionistAgentOptions = {}) 
   });
 
   return Agent.create({
-    instructions: buildReceptionistPrompt(business),
+    instructions: business.organizationSpec
+      ? compileOrganizationPrompt(business.organizationSpec)
+      : buildReceptionistPrompt(business),
 
     tools: [
       createGetBusinessInformationTool(context, businessService),

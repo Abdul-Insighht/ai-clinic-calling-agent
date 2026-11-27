@@ -251,6 +251,8 @@ export class BookingService {
               toEmail: reservation.appointment.customerEmail,
               businessName: business.name,
               businessLocation: business.location,
+              callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+              locationLabel: business.organizationSpec?.customerInfo.locationLabel,
               booking: reservation.appointment,
               isUpdate: false,
             }).then((r) => {
@@ -263,6 +265,8 @@ export class BookingService {
               toPhone: reservation.appointment.phoneE164,
               businessName: business.name,
               businessLocation: business.location,
+              callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+              locationLabel: business.organizationSpec?.customerInfo.locationLabel,
               booking: reservation.appointment,
               isUpdate: false,
             }).then((r) => {
@@ -692,6 +696,8 @@ export class BookingService {
         toEmail: updated.customerEmail,
         businessName: business.name,
         businessLocation: business.location,
+        callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+        locationLabel: business.organizationSpec?.customerInfo.locationLabel,
         booking: updated,
         isUpdate: true,
       });
@@ -702,6 +708,8 @@ export class BookingService {
         toPhone: updated.phoneE164,
         businessName: business.name,
         businessLocation: business.location,
+        callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+        locationLabel: business.organizationSpec?.customerInfo.locationLabel,
         booking: updated,
         isUpdate: true,
       });
@@ -835,6 +843,8 @@ export class BookingService {
         toEmail: cancelled.customerEmail,
         businessName: business.name,
         businessLocation: business.location,
+        callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+        locationLabel: business.organizationSpec?.customerInfo.locationLabel,
         booking: cancelled,
         isCancelled: true,
       });
@@ -845,6 +855,8 @@ export class BookingService {
         toPhone: cancelled.phoneE164,
         businessName: business.name,
         businessLocation: business.location,
+        callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+        locationLabel: business.organizationSpec?.customerInfo.locationLabel,
         booking: cancelled,
         isCancelled: true,
       });
@@ -954,6 +966,8 @@ export class BookingService {
         toEmail: updated.customerEmail,
         businessName: business.name,
         businessLocation: business.location,
+        callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+        locationLabel: business.organizationSpec?.customerInfo.locationLabel,
         booking: updated,
         isRescheduled: true,
       });
@@ -964,6 +978,8 @@ export class BookingService {
         toPhone: updated.phoneE164,
         businessName: business.name,
         businessLocation: business.location,
+        callerLabel: business.organizationSpec?.customerInfo.callerLabel,
+        locationLabel: business.organizationSpec?.customerInfo.locationLabel,
         booking: updated,
         isRescheduled: true,
       });

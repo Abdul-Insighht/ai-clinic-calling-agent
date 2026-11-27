@@ -8,6 +8,7 @@ import type {
   BusinessServiceItem,
   VerifiedPricingRule,
 } from '../models/business.ts';
+import { type OrganizationSpec, parseOrganizationSpec } from '../models/organization-spec.ts';
 
 export interface BusinessRepository {
   getBusinessProfile(context: BusinessContext): Promise<BusinessProfile | null>;
@@ -173,6 +174,27 @@ export class PostgresBusinessRepository implements BusinessRepository {
         isVerified: item.is_verified,
       }));
 
+      let organizationSpec: OrganizationSpec | undefined;
+      try {
+        const specResult = await client.query<{ payload: unknown }>(
+          `
+          SELECT payload
+          FROM aibitsol.workspace_settings
+          WHERE business_id = $1 AND setting_key = 'organization_spec'
+          `,
+          [context.businessId],
+        );
+        const rawSpec = specResult.rows[0]?.payload;
+        if (rawSpec) {
+          const parsed = parseOrganizationSpec(rawSpec);
+          if (parsed.success) {
+            organizationSpec = parsed.data;
+          }
+        }
+      } catch {
+        // Optional table/row; ignore if workspace_settings is not yet initialized
+      }
+
       return {
         id: row.id,
         name: row.name,
@@ -192,6 +214,7 @@ export class PostgresBusinessRepository implements BusinessRepository {
         googleCalendarId: row.google_calendar_id,
         aiVoice: row.ai_voice,
         aiModel: row.ai_model,
+        ...(organizationSpec ? { organizationSpec } : {}),
       };
     }, this.pool ?? getDbPool());
   }

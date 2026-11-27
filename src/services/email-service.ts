@@ -7,6 +7,8 @@ export type BookingEmailPayload = {
   toEmail: string;
   businessName: string;
   businessLocation?: string;
+  callerLabel?: string | undefined;
+  locationLabel?: string | undefined;
   booking: AppointmentRecord;
   isUpdate?: boolean;
   isCancelled?: boolean;
@@ -59,7 +61,16 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
   text: string;
   html: string;
 } {
-  const { booking, businessName, businessLocation, isUpdate, isCancelled, isRescheduled } = payload;
+  const {
+    booking,
+    businessName,
+    businessLocation,
+    callerLabel = 'Patient',
+    locationLabel = 'Clinic Location',
+    isUpdate,
+    isCancelled,
+    isRescheduled,
+  } = payload;
   const clinicLocation = businessLocation || 'Main Medical Plaza, City Center';
   const tz = booking.timezone || 'Asia/Karachi';
   const startLocal = DateTime.fromISO(booking.startsAt, { zone: 'utc' }).setZone(tz);
@@ -101,12 +112,12 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
     intro,
     '',
     `Booking ID: ${shortRef}`,
-    `Patient: ${booking.customerName}`,
+    `${callerLabel}: ${booking.customerName}`,
     `Service / Reason: ${booking.reason}`,
     `Date: ${dateDisplay}`,
     `Time: ${timeDisplay}`,
     `Phone: ${booking.phoneE164}`,
-    `Clinic Location: ${clinicLocation}`,
+    `${locationLabel}: ${clinicLocation}`,
     '',
     `Need to check, reschedule, update, or cancel? Call ${businessName} and mention Booking ID ${shortRef}.`,
   ].join('\n');
@@ -132,7 +143,7 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#38bdf8;font-size:14px;font-weight:700;font-family:monospace;">${escapeHtml(shortRef)}</td>
           </tr>
           <tr>
-            <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#94a3b8;font-size:13px;">Patient</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#94a3b8;font-size:13px;">${escapeHtml(callerLabel)}</td>
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#eef2ff;font-size:13px;font-weight:600;">${escapeHtml(booking.customerName)}</td>
           </tr>
           <tr>
@@ -152,7 +163,7 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#eef2ff;font-size:13px;">${escapeHtml(booking.phoneE164)}</td>
           </tr>
           <tr>
-            <td style="padding:11px 14px;color:#94a3b8;font-size:13px;">Clinic Location</td>
+            <td style="padding:11px 14px;color:#94a3b8;font-size:13px;">${escapeHtml(locationLabel)}</td>
             <td style="padding:11px 14px;color:#eef2ff;font-size:13px;">${escapeHtml(clinicLocation)}</td>
           </tr>
         </table>

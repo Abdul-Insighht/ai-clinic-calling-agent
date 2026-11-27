@@ -1,3 +1,5 @@
+import type { OrganizationSpec } from './organization-spec.ts';
+
 export type BusinessHoursMap = {
   monday: string;
   tuesday: string;
@@ -61,6 +63,7 @@ export type BusinessProfile = {
   googleCalendarId?: string | null;
   aiVoice?: string;
   aiModel?: string;
+  organizationSpec?: OrganizationSpec;
 };
 
 export type BusinessContext = {
