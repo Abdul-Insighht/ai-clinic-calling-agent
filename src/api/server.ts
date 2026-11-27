@@ -354,6 +354,21 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
       return { appointments };
     });
 
+    protectedRoutes.post('/api/v1/appointments/:id/cancel', async (req, reply) => {
+      const params = z.object({ id: z.string().min(1) }).safeParse(req.params);
+      if (!params.success) {
+        return reply.code(400).send({ error: 'INVALID_APPOINTMENT_ID' });
+      }
+      const context = getBusinessContext(req);
+      const cancelled = appointmentRepository.cancelAppointment
+        ? await appointmentRepository.cancelAppointment(context, params.data.id)
+        : null;
+      if (!cancelled) {
+        return reply.code(404).send({ error: 'APPOINTMENT_NOT_FOUND' });
+      }
+      return { appointment: cancelled };
+    });
+
     protectedRoutes.get('/api/v1/calls', async (req) => {
       const context = getBusinessContext(req);
       if (!config.database.isPostgresConfigured) {

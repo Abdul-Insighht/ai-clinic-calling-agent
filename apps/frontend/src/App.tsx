@@ -8,6 +8,7 @@ import {
   CalendarCheck2,
   ChevronDown,
   ChevronUp,
+  Download,
   History,
   LayoutDashboard,
   LogOut,
@@ -29,6 +30,7 @@ import {
   Sparkles,
   UserCheck,
   Users,
+  XCircle,
 } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -77,7 +79,7 @@ type ChannelSettings = {
 type OutboundCampaign = {
   id: string;
   name: string;
-  type: 'Appointment Reminder' | 'Lead Follow-up' | 'Missed Call Callback' | 'Customer Feedback';
+  type: 'Appointment Reminder' | 'Lead Follow-up' | 'Missed Call Callback' | 'Patient Feedback';
   status: 'active' | 'paused' | 'scheduled';
   totalTargets: number;
   completedCalls: number;
@@ -94,13 +96,13 @@ const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
   autoWhatsappConfirm: true,
   autoWhatsappReminder: true,
   whatsappTemplate:
-    'Hi {{customer_name}}, your appointment ({{booking_code}}) with {{business_name}} is confirmed for {{date}} at {{time}}. Call anytime with {{booking_code}} to check, update, reschedule, or cancel.',
+    'Hi {{patient_name}}, your appointment ({{booking_code}}) with {{business_name}} at {{clinic_location}} is confirmed for {{date}} at {{time}}. Call anytime with {{booking_code}} to check, update, reschedule, or cancel.',
 };
 
 const DEFAULT_CAMPAIGNS: OutboundCampaign[] = [
   {
     id: 'cmp-reminders',
-    name: '24-Hour Appointment Confirmations',
+    name: '24-Hour Clinic Appointment Reminders',
     type: 'Appointment Reminder',
     status: 'active',
     totalTargets: 28,
@@ -108,31 +110,31 @@ const DEFAULT_CAMPAIGNS: OutboundCampaign[] = [
     connectedRate: 86,
     scheduleWindow: 'Daily · 09:00 AM – 06:00 PM',
     scriptPreview:
-      'Hi, this is Sarah calling to confirm your upcoming appointment tomorrow. Does that time still work for you?',
+      'Hi, this is Sarah from CareFirst Medical Clinic calling to confirm your upcoming appointment tomorrow. Does that time still work for you?',
   },
   {
     id: 'cmp-leads',
-    name: 'New Website Lead Follow-Up',
+    name: 'New Patient Inquiry Follow-Up',
     type: 'Lead Follow-up',
     status: 'active',
     totalTargets: 15,
     completedCalls: 9,
     connectedRate: 74,
-    scheduleWindow: 'Instant · Within 2 mins of lead capture',
+    scheduleWindow: 'Instant · Within 2 mins of inquiry',
     scriptPreview:
-      'Hi, thanks for reaching out! I am calling to answer your questions and find a convenient slot for your service.',
+      'Hi, thanks for reaching out to CareFirst Medical Clinic! I am calling to answer your questions and find a convenient appointment slot.',
   },
   {
     id: 'cmp-missed',
-    name: 'After-Hours Missed Call Recovery',
+    name: 'After-Hours Missed Clinic Call Recovery',
     type: 'Missed Call Callback',
     status: 'paused',
     totalTargets: 12,
     completedCalls: 12,
     connectedRate: 92,
-    scheduleWindow: 'Next Business Day · 08:30 AM',
+    scheduleWindow: 'Next Business Day · 09:00 AM',
     scriptPreview:
-      'Hello! We saw we missed your call earlier and wanted to follow up right away to help you schedule.',
+      'Hello! We saw we missed your call to CareFirst Medical Clinic earlier and wanted to follow up right away to help you schedule.',
   },
 ];
 
@@ -192,6 +194,9 @@ export function App() {
   const [perfMetrics, setPerfMetrics] = useState<PerformanceMetrics | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [apptSearch, setApptSearch] = useState('');
+  const [apptStatusFilter, setApptStatusFilter] = useState<'all' | 'confirmed' | 'cancelled'>('all');
+  const [cancellingApptId, setCancellingApptId] = useState<string | null>(null);
+  const prevCallStatusRef = useRef<LiveCallSnapshot['status']>('idle');
 
   // Voice Playground & Orb state
   const orbControllerRef = useRef<OrbController | null>(null);
@@ -391,6 +396,92 @@ export function App() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  // Auto-refresh immediately when a live voice call finishes
+  useEffect(() => {
+    const prev = prevCallStatusRef.current;
+    prevCallStatusRef.current = callSnap.status;
+    if ((prev === 'connected' || prev === 'connecting') && callSnap.status === 'idle') {
+      const timer = window.setTimeout(() => {
+        void loadDashboard();
+      }, 1500);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [callSnap.status, loadDashboard]);
+
+  // Gentle 30s background refresh on read-only dashboard tabs while no call is active
+  useEffect(() => {
+    if (!token || callSnap.status !== 'idle') return undefined;
+    if (section === 'knowledge' || section === 'policies' || section === 'agents') {
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      void loadDashboard();
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [token, callSnap.status, section, loadDashboard]);
+
+  async function handleCancelAppointment(appt: BookedAppointmentItem) {
+    if (!token) return;
+    const code = appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`;
+    const ok = window.confirm(`Cancel appointment ${code} for ${appt.customerName}?`);
+    if (!ok) return;
+    setCancellingApptId(appt.id);
+    try {
+      await api.cancelAppointment(token, appt.id);
+      setAppointments((prev) =>
+        prev.map((item) => (item.id === appt.id ? { ...item, status: 'cancelled' } : item)),
+      );
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to cancel appointment');
+    } finally {
+      setCancellingApptId(null);
+    }
+  }
+
+  function handleExportAppointmentsCsv(rows: BookedAppointmentItem[]) {
+    const escapeCsv = (val: string | null | undefined) => {
+      const s = String(val ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = [
+      'Booking ID',
+      'Patient',
+      'Email',
+      'Phone',
+      'Clinic Location',
+      'Scheduled Time',
+      'Reason',
+      'Status',
+      'Calendar Sync',
+    ];
+    const lines = [
+      header.join(','),
+      ...rows.map((a) =>
+        [
+          a.bookingCode || `BK${a.id.slice(0, 6).toUpperCase()}`,
+          a.customerName,
+          a.customerEmail ?? '',
+          a.phoneE164,
+          a.address ?? '',
+          formatDateTime(a.startsAt, a.timezone),
+          a.reason,
+          a.status,
+          a.googleEventId ? 'Synced' : 'Local DB',
+        ]
+          .map(escapeCsv)
+          .join(','),
+      ),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `carefirst-appointments-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -949,7 +1040,7 @@ export function App() {
                     <thead>
                       <tr>
                         <th>Booking ID</th>
-                        <th>Customer</th>
+                        <th>Patient</th>
                         <th>Phone</th>
                         <th>Date & Time</th>
                         <th>Reason</th>
@@ -1420,9 +1511,10 @@ export function App() {
                 <div>
                   <h3>Launch New Outbound Campaign</h3>
                   <div className="muted">
-                    Schedule AI reminder calls, lead follow-ups, or missed-call callbacks
+                    Schedule AI reminder calls, patient follow-ups, or missed-call callbacks
                   </div>
                 </div>
+                <span className="badge">Preview · Local Workspace</span>
               </div>
               <div className="form-grid" style={{ alignItems: 'end' }}>
                 <div>
@@ -1432,7 +1524,7 @@ export function App() {
                     style={{ marginBottom: 0 }}
                     value={newCampaignName}
                     onChange={(e) => setNewCampaignName(e.target.value)}
-                    placeholder="e.g. Tomorrow HVAC Appointment Reminders"
+                    placeholder="e.g. Tomorrow Clinic Appointment Reminders"
                     required
                   />
                 </div>
@@ -1449,7 +1541,7 @@ export function App() {
                     <option value="Appointment Reminder">Appointment Reminder</option>
                     <option value="Lead Follow-up">Lead Follow-up</option>
                     <option value="Missed Call Callback">Missed Call Callback</option>
-                    <option value="Customer Feedback">Customer Feedback</option>
+                    <option value="Patient Feedback">Patient Feedback</option>
                   </select>
                 </div>
                 <div>
@@ -1549,107 +1641,156 @@ export function App() {
            ======================================================= */}
         {section === 'appointments' && (
           <>
-            <div className="card" style={{ marginBottom: 20 }}>
-              <div className="card-header">
-                <div>
-                  <h3>Booked Appointments</h3>
-                  <div className="muted">
-                    Confirmed bookings stored in PostgreSQL and synced via Google Calendar outbox.
+            {(() => {
+              const filteredAppointments = appointments.filter((appt) => {
+                if (apptStatusFilter !== 'all' && appt.status !== apptStatusFilter) {
+                  return false;
+                }
+                const q = apptSearch.trim().toLowerCase();
+                if (!q) return true;
+                const code = (
+                  appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`
+                ).toLowerCase();
+                return (
+                  code.includes(q) ||
+                  appt.customerName.toLowerCase().includes(q) ||
+                  appt.phoneE164.toLowerCase().includes(q) ||
+                  (appt.customerEmail ?? '').toLowerCase().includes(q)
+                );
+              });
+              return (
+                <div className="card" style={{ marginBottom: 20 }}>
+                  <div className="card-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+                    <div>
+                      <h3>Booked Appointments</h3>
+                      <div className="muted">
+                        Confirmed bookings stored in PostgreSQL and synced via Google Calendar
+                        outbox.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        value={apptSearch}
+                        onChange={(e) => setApptSearch(e.target.value)}
+                        placeholder="Search BK001, patient, or phone..."
+                        style={{ maxWidth: 220 }}
+                      />
+                      <select
+                        className="select"
+                        style={{ width: 'auto', marginBottom: 0, padding: '6px 10px' }}
+                        value={apptStatusFilter}
+                        onChange={(e) =>
+                          setApptStatusFilter(
+                            e.target.value as 'all' | 'confirmed' | 'cancelled',
+                          )
+                        }
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleExportAppointmentsCsv(filteredAppointments)}
+                        disabled={filteredAppointments.length === 0}
+                      >
+                        <Download size={14} /> Export CSV
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => void loadDashboard()}
+                        disabled={refreshing}
+                      >
+                        <RefreshCw size={14} /> Refresh
+                      </button>
+                    </div>
                   </div>
+                  {filteredAppointments.length === 0 ? (
+                    <p className="muted">No matching appointments found.</p>
+                  ) : (
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Booking ID</th>
+                            <th>Patient</th>
+                            <th>Phone</th>
+                            <th>Clinic Location</th>
+                            <th>Scheduled Time</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Calendar</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredAppointments.map((appt) => (
+                            <tr key={appt.id}>
+                              <td>
+                                <span
+                                  className="badge badge-accent"
+                                  style={{ fontFamily: 'monospace' }}
+                                >
+                                  {appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`}
+                                </span>
+                              </td>
+                              <td>
+                                <strong>{appt.customerName}</strong>
+                                {appt.customerEmail && (
+                                  <div className="muted" style={{ fontSize: 12 }}>
+                                    {appt.customerEmail}
+                                  </div>
+                                )}
+                              </td>
+                              <td>{appt.phoneE164}</td>
+                              <td>{appt.address || <span className="muted">—</span>}</td>
+                              <td>{formatDateTime(appt.startsAt, appt.timezone)}</td>
+                              <td>{appt.reason}</td>
+                              <td>
+                                <span
+                                  className={`badge ${
+                                    appt.status === 'cancelled' || appt.status === 'failed'
+                                      ? 'badge-danger'
+                                      : appt.status === 'confirmed'
+                                        ? 'badge-ok'
+                                        : 'badge-accent'
+                                  }`}
+                                >
+                                  {appt.status}
+                                </span>
+                              </td>
+                              <td>
+                                <span
+                                  className={`badge ${appt.googleEventId ? 'badge-ok' : 'badge-accent'}`}
+                                >
+                                  {appt.googleEventId ? 'Synced' : 'Queued / Local'}
+                                </span>
+                              </td>
+                              <td>
+                                {appt.status === 'confirmed' ? (
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    disabled={cancellingApptId === appt.id}
+                                    onClick={() => void handleCancelAppointment(appt)}
+                                    title="Cancel appointment"
+                                  >
+                                    <XCircle size={13} />{' '}
+                                    {cancellingApptId === appt.id ? 'Cancelling...' : 'Cancel'}
+                                  </button>
+                                ) : (
+                                  <span className="muted">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-                <input
-                  type="text"
-                  value={apptSearch}
-                  onChange={(e) => setApptSearch(e.target.value)}
-                  placeholder="Search BK001, name, or phone..."
-                  style={{ maxWidth: 260, marginLeft: 'auto', marginRight: 10 }}
-                />
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => void loadDashboard()}
-                  disabled={refreshing}
-                >
-                  <RefreshCw size={14} /> Refresh
-                </button>
-              </div>
-              {appointments.length === 0 ? (
-                <p className="muted">No booked appointments yet.</p>
-              ) : (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Booking ID</th>
-                        <th>Customer</th>
-                        <th>Phone</th>
-                        <th>Address</th>
-                        <th>Scheduled Time</th>
-                        <th>Reason</th>
-                        <th>Status</th>
-                        <th>Calendar</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {appointments
-                        .filter((appt) => {
-                          const q = apptSearch.trim().toLowerCase();
-                          if (!q) return true;
-                          const code = (
-                            appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`
-                          ).toLowerCase();
-                          return (
-                            code.includes(q) ||
-                            appt.customerName.toLowerCase().includes(q) ||
-                            appt.phoneE164.toLowerCase().includes(q) ||
-                            (appt.customerEmail ?? '').toLowerCase().includes(q)
-                          );
-                        })
-                        .map((appt) => (
-                        <tr key={appt.id}>
-                          <td>
-                            <span className="badge badge-accent" style={{ fontFamily: 'monospace' }}>
-                              {appt.bookingCode || `BK${appt.id.slice(0, 6).toUpperCase()}`}
-                            </span>
-                          </td>
-                          <td>
-                            <strong>{appt.customerName}</strong>
-                            {appt.customerEmail && (
-                              <div className="muted" style={{ fontSize: 12 }}>
-                                {appt.customerEmail}
-                              </div>
-                            )}
-                          </td>
-                          <td>{appt.phoneE164}</td>
-                          <td>{appt.address || <span className="muted">—</span>}</td>
-                          <td>{formatDateTime(appt.startsAt, appt.timezone)}</td>
-                          <td>{appt.reason}</td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                appt.status === 'cancelled' || appt.status === 'failed'
-                                  ? 'badge-danger'
-                                  : appt.status === 'confirmed'
-                                    ? 'badge-ok'
-                                    : 'badge-accent'
-                              }`}
-                            >
-                              {appt.status}
-                            </span>
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${appt.googleEventId ? 'badge-ok' : 'badge-accent'}`}
-                            >
-                              {appt.googleEventId ? 'Synced' : 'Queued / Local'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+              );
+            })()}
 
             <div className="card">
               <div className="card-header">
@@ -1708,7 +1849,7 @@ export function App() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Customer</th>
+                      <th>Patient</th>
                       <th>Phone</th>
                       <th>Location</th>
                       <th>Preferred Time</th>
@@ -1892,14 +2033,21 @@ export function App() {
               </div>
               <div className="card">
                 <div className="kpi-label">BOOKING CONVERSION</div>
-                <div className="kpi-value">
-                  {calls.length > 0
-                    ? `${Math.min(100, Math.round((appointments.length / calls.length) * 100))}%`
-                    : '—'}
-                </div>
-                <div className="muted">
-                  {appointments.length} bookings from {calls.length} calls
-                </div>
+                {(() => {
+                  const callBookedCount = appointments.filter((a) => Boolean(a.callId)).length;
+                  const pct =
+                    calls.length > 0
+                      ? Math.min(100, Math.round((callBookedCount / calls.length) * 100))
+                      : 0;
+                  return (
+                    <>
+                      <div className="kpi-value">{calls.length > 0 ? `${pct}%` : '—'}</div>
+                      <div className="muted">
+                        {callBookedCount} AI call bookings from {calls.length} calls
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -1931,14 +2079,14 @@ export function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                      <span>Appointments Booked</span>
-                      <strong>{appointments.length}</strong>
+                      <span>AI Call Bookings</span>
+                      <strong>{appointments.filter((a) => Boolean(a.callId)).length}</strong>
                     </div>
                     <div className="progress-track">
                       <div
                         className="progress-fill ok"
                         style={{
-                          width: `${calls.length > 0 ? Math.min(100, Math.round((appointments.length / Math.max(calls.length, 1)) * 100)) : 20}%`,
+                          width: `${calls.length > 0 ? Math.min(100, Math.round((appointments.filter((a) => Boolean(a.callId)).length / Math.max(calls.length, 1)) * 100)) : 20}%`,
                         }}
                       />
                     </div>

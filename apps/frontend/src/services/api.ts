@@ -34,6 +34,7 @@ export type AvailableSlot = {
 export type BookedAppointmentItem = {
   id: string;
   bookingCode?: string;
+  callId?: string | null;
   customerName: string;
   phoneE164: string;
   customerEmail?: string | null;
@@ -129,6 +130,13 @@ export const api = {
 
   getAppointments: (token: string) =>
     request<{ appointments: BookedAppointmentItem[] }>('/api/v1/appointments', {}, token),
+
+  cancelAppointment: (token: string, appointmentId: string) =>
+    request<{ appointment: BookedAppointmentItem }>(
+      `/api/v1/appointments/${encodeURIComponent(appointmentId)}/cancel`,
+      { method: 'POST' },
+      token,
+    ),
 
   getCalls: (token: string) => request<{ calls: CallLogItem[] }>('/api/v1/calls', {}, token),
 
