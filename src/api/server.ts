@@ -440,6 +440,117 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
       return { appointment: result.appointment };
     });
 
+    // Workspace settings persistence (Channels & Outbound Campaigns) in PostgreSQL JSONB
+    const memoryWorkspaceSettings = new Map<string, unknown>();
+    let workspaceTableReady = false;
+    const ensureWorkspaceTable = async () => {
+      if (workspaceTableReady || !config.database.isPostgresConfigured) return;
+      await getDbPool().query(`
+        CREATE TABLE IF NOT EXISTS aibitsol.workspace_settings (
+          business_id UUID NOT NULL,
+          setting_key TEXT NOT NULL,
+          payload JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (business_id, setting_key)
+        )
+      `);
+      workspaceTableReady = true;
+    };
+
+    const readWorkspaceSetting = async (businessId: string, key: string): Promise<unknown> => {
+      if (!config.database.isPostgresConfigured) {
+        return memoryWorkspaceSettings.get(`${businessId}:${key}`) ?? null;
+      }
+      await ensureWorkspaceTable();
+      const res = await getDbPool().query<{ payload: unknown }>(
+        `SELECT payload FROM aibitsol.workspace_settings WHERE business_id = $1 AND setting_key = $2`,
+        [businessId, key],
+      );
+      return res.rows[0]?.payload ?? null;
+    };
+
+    const writeWorkspaceSetting = async (
+      businessId: string,
+      key: string,
+      payload: unknown,
+    ): Promise<void> => {
+      if (!config.database.isPostgresConfigured) {
+        memoryWorkspaceSettings.set(`${businessId}:${key}`, payload);
+        return;
+      }
+      await ensureWorkspaceTable();
+      await getDbPool().query(
+        `
+        INSERT INTO aibitsol.workspace_settings (business_id, setting_key, payload, updated_at)
+        VALUES ($1, $2, $3::jsonb, NOW())
+        ON CONFLICT (business_id, setting_key)
+        DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+        `,
+        [businessId, key, JSON.stringify(payload)],
+      );
+    };
+
+    protectedRoutes.get('/api/v1/workspace/channels', async (req) => {
+      const context = getBusinessContext(req);
+      const channels = await readWorkspaceSetting(context.businessId, 'channels');
+      return { channels };
+    });
+
+    protectedRoutes.put('/api/v1/workspace/channels', async (req, reply) => {
+      const schema = z.object({
+        inboundPhone: z.string(),
+        outboundCallerId: z.string(),
+        transferPhone: z.string(),
+        whatsappNumber: z.string(),
+        autoWhatsappConfirm: z.boolean(),
+        autoWhatsappReminder: z.boolean(),
+        whatsappTemplate: z.string(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'INVALID_CHANNELS_PAYLOAD' });
+      }
+      const context = getBusinessContext(req);
+      await writeWorkspaceSetting(context.businessId, 'channels', parsed.data);
+      return { channels: parsed.data };
+    });
+
+    protectedRoutes.get('/api/v1/workspace/campaigns', async (req) => {
+      const context = getBusinessContext(req);
+      const campaigns = await readWorkspaceSetting(context.businessId, 'campaigns');
+      return { campaigns: Array.isArray(campaigns) ? campaigns : null };
+    });
+
+    protectedRoutes.put('/api/v1/workspace/campaigns', async (req, reply) => {
+      const schema = z.object({
+        campaigns: z.array(
+          z.object({
+            id: z.string().min(1),
+            name: z.string().min(1),
+            type: z.enum([
+              'Appointment Reminder',
+              'Lead Follow-up',
+              'Missed Call Callback',
+              'Patient Feedback',
+            ]),
+            status: z.enum(['active', 'paused', 'scheduled']),
+            totalTargets: z.number().int().min(0),
+            completedCalls: z.number().int().min(0),
+            connectedRate: z.number().min(0).max(100),
+            scheduleWindow: z.string(),
+            scriptPreview: z.string(),
+          }),
+        ),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'INVALID_CAMPAIGNS_PAYLOAD' });
+      }
+      const context = getBusinessContext(req);
+      await writeWorkspaceSetting(context.businessId, 'campaigns', parsed.data.campaigns);
+      return { campaigns: parsed.data.campaigns };
+    });
+
     protectedRoutes.get('/api/v1/calls', async (req) => {
       const context = getBusinessContext(req);
       if (!config.database.isPostgresConfigured) {

@@ -10,21 +10,17 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  ExternalLink,
   History,
   LayoutDashboard,
   LogOut,
   MessageSquare,
   Mic,
   MicOff,
-  Pause,
   Phone,
   PhoneCall,
-  PhoneForwarded,
   PhoneIncoming,
   PhoneOff,
   PhoneOutgoing,
-  Play,
   Plus,
   RefreshCw,
   Save,
@@ -36,6 +32,9 @@ import {
   XCircle,
 } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { AnalyticsTab } from './components/AnalyticsTab';
+import { CallDetailDrawer } from './components/CallDetailDrawer';
+import { ChannelsTab } from './components/ChannelsTab';
 import {
   AudioWaveform,
   FloatingVoiceOrb,
@@ -44,6 +43,8 @@ import {
   type OrbController,
   VoiceOrbSphere,
 } from './components/FloatingVoiceOrb';
+import { OutboundTab } from './components/OutboundTab';
+import { RescheduleModal } from './components/RescheduleModal';
 import {
   api,
   type AuthUser,
@@ -51,7 +52,9 @@ import {
   type BookedAppointmentItem,
   type BusinessProfile,
   type CallLogItem,
+  type ChannelSettings,
   type LeadItem,
+  type OutboundCampaign,
   type PerformanceMetrics,
 } from './services/api';
 
@@ -68,28 +71,6 @@ type Section =
   | 'channels'
   | 'policies'
   | 'team';
-
-type ChannelSettings = {
-  inboundPhone: string;
-  outboundCallerId: string;
-  transferPhone: string;
-  whatsappNumber: string;
-  autoWhatsappConfirm: boolean;
-  autoWhatsappReminder: boolean;
-  whatsappTemplate: string;
-};
-
-type OutboundCampaign = {
-  id: string;
-  name: string;
-  type: 'Appointment Reminder' | 'Lead Follow-up' | 'Missed Call Callback' | 'Patient Feedback';
-  status: 'active' | 'paused' | 'scheduled';
-  totalTargets: number;
-  completedCalls: number;
-  connectedRate: number;
-  scheduleWindow: string;
-  scriptPreview: string;
-};
 
 const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
   inboundPhone: '+1 (240) 212-4068',
@@ -263,23 +244,23 @@ export function App() {
   const [callFilter, setCallFilter] = useState<'all' | 'inbound' | 'outbound'>('all');
 
   useEffect(() => {
-    if (!user) return;
-    try {
-      const savedCh = localStorage.getItem(`voxdesk_channels_${user.businessId}`);
-      if (savedCh) {
-        setChannelSettings({
-          ...DEFAULT_CHANNEL_SETTINGS,
-          ...(JSON.parse(savedCh) as Partial<ChannelSettings>),
-        });
-      }
-      const savedCmp = localStorage.getItem(`voxdesk_campaigns_${user.businessId}`);
-      if (savedCmp) {
-        setCampaigns(JSON.parse(savedCmp) as OutboundCampaign[]);
-      }
-    } catch {
-      // Ignore storage parse errors
-    }
-  }, [user]);
+    if (!token || !user) return;
+    let cancelled = false;
+    void Promise.allSettled([api.getChannels(token), api.getCampaigns(token)]).then(
+      ([chRes, cmpRes]) => {
+        if (cancelled) return;
+        if (chRes.status === 'fulfilled' && chRes.value.channels) {
+          setChannelSettings({ ...DEFAULT_CHANNEL_SETTINGS, ...chRes.value.channels });
+        }
+        if (cmpRes.status === 'fulfilled' && Array.isArray(cmpRes.value.campaigns)) {
+          setCampaigns(cmpRes.value.campaigns);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user]);
 
   const stopMicTest = useCallback(() => {
     if (micRafRef.current != null) {
@@ -616,18 +597,24 @@ export function App() {
     }
   }
 
-  function handleSaveChannels(e: FormEvent) {
+  async function handleSaveChannels(e: FormEvent) {
     e.preventDefault();
-    if (!user) return;
-    localStorage.setItem(`voxdesk_channels_${user.businessId}`, JSON.stringify(channelSettings));
-    setChannelSaved(true);
-    window.setTimeout(() => setChannelSaved(false), 3500);
+    if (!token) return;
+    try {
+      await api.saveChannels(token, channelSettings);
+      setChannelSaved(true);
+      window.setTimeout(() => setChannelSaved(false), 3500);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Failed to save channel settings');
+    }
   }
 
   function updateCampaigns(next: OutboundCampaign[]) {
     setCampaigns(next);
-    if (user) {
-      localStorage.setItem(`voxdesk_campaigns_${user.businessId}`, JSON.stringify(next));
+    if (token) {
+      void api.saveCampaigns(token, next).catch(() => {
+        // Keep optimistic UI state; server will sync on next update
+      });
     }
   }
 
@@ -1553,164 +1540,21 @@ export function App() {
             4. OUTBOUND CAMPAIGNS (ONGOING / OUTGOING CALLING)
            ======================================================= */}
         {section === 'outbound' && (
-          <>
-            <div className="kpi-grid">
-              <div className="card">
-                <div className="kpi-label">ACTIVE CAMPAIGNS</div>
-                <div className="kpi-value">{activeCampaignsCount}</div>
-                <div className="muted">Automated outbound dialers</div>
-              </div>
-              <div className="card">
-                <div className="kpi-label">OUTBOUND CALLS QUEUED</div>
-                <div className="kpi-value">
-                  {campaigns.reduce((acc, c) => acc + (c.totalTargets - c.completedCalls), 0)}
-                </div>
-                <div className="muted">Scheduled within working hours</div>
-              </div>
-              <div className="card">
-                <div className="kpi-label">COMPLETED DIALS</div>
-                <div className="kpi-value">
-                  {campaigns.reduce((acc, c) => acc + c.completedCalls, 0)}
-                </div>
-                <div className="muted">Answered & logged automatically</div>
-              </div>
-              <div className="card">
-                <div className="kpi-label">OUTBOUND CALLER ID</div>
-                <div className="kpi-value" style={{ fontSize: 20 }}>
-                  {channelSettings.outboundCallerId}
-                </div>
-                <div className="muted">LiveKit SIP Trunk Ready</div>
-              </div>
-            </div>
-
-            <form className="card" style={{ marginBottom: 20 }} onSubmit={handleCreateCampaign}>
-              <div className="card-header">
-                <div>
-                  <h3>Launch New Outbound Campaign</h3>
-                  <div className="muted">
-                    Schedule AI reminder calls, patient follow-ups, or missed-call callbacks
-                  </div>
-                </div>
-                <span className="badge">Preview · Local Workspace</span>
-              </div>
-              <div className="form-grid" style={{ alignItems: 'end' }}>
-                <div>
-                  <label className="field-label">Campaign Name</label>
-                  <input
-                    className="input"
-                    style={{ marginBottom: 0 }}
-                    value={newCampaignName}
-                    onChange={(e) => setNewCampaignName(e.target.value)}
-                    placeholder="e.g. Tomorrow Clinic Appointment Reminders"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="field-label">Campaign Goal</label>
-                  <select
-                    className="select"
-                    style={{ marginBottom: 0 }}
-                    value={newCampaignType}
-                    onChange={(e) =>
-                      setNewCampaignType(e.target.value as OutboundCampaign['type'])
-                    }
-                  >
-                    <option value="Appointment Reminder">Appointment Reminder</option>
-                    <option value="Lead Follow-up">Lead Follow-up</option>
-                    <option value="Missed Call Callback">Missed Call Callback</option>
-                    <option value="Patient Feedback">Patient Feedback</option>
-                  </select>
-                </div>
-                <div>
-                  <button className="btn" type="submit" style={{ width: '100%' }}>
-                    <Plus size={15} /> Create Campaign
-                  </button>
-                </div>
-              </div>
-            </form>
-
-            <div className="agent-cards-grid">
-              {campaigns.map((cmp) => {
-                const pct =
-                  cmp.totalTargets > 0
-                    ? Math.round((cmp.completedCalls / cmp.totalTargets) * 100)
-                    : 0;
-                return (
-                  <div className="card card-hover" key={cmp.id}>
-                    <div className="agent-card-top">
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: 15 }}>{cmp.name}</div>
-                        <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                          {cmp.type} · {cmp.scheduleWindow}
-                        </div>
-                      </div>
-                      <span
-                        className={`badge ${
-                          cmp.status === 'active'
-                            ? 'badge-ok'
-                            : cmp.status === 'scheduled'
-                              ? 'badge-accent'
-                              : ''
-                        }`}
-                      >
-                        {cmp.status}
-                      </span>
-                    </div>
-
-                    <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 12px' }}>
-                      “{cmp.scriptPreview}”
-                    </p>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        fontSize: 12,
-                        color: 'var(--muted)',
-                      }}
-                    >
-                      <span>
-                        Progress: {cmp.completedCalls}/{cmp.totalTargets} calls ({pct}%)
-                      </span>
-                      <span>Connect rate: {cmp.connectedRate}%</span>
-                    </div>
-                    <div className="progress-track">
-                      <div
-                        className={`progress-fill ${cmp.status === 'active' ? 'ok' : ''}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => toggleCampaignStatus(cmp.id)}
-                      >
-                        {cmp.status === 'active' ? (
-                          <>
-                            <Pause size={13} /> Pause
-                          </>
-                        ) : (
-                          <>
-                            <Play size={13} /> Activate
-                          </>
-                        )}
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => {
-                          setCallMode('outbound');
-                          setSection('playground');
-                        }}
-                      >
-                        <PhoneForwarded size={13} /> Test Call
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
+          <OutboundTab
+            campaigns={campaigns}
+            activeCampaignsCount={activeCampaignsCount}
+            outboundCallerId={channelSettings.outboundCallerId}
+            newCampaignName={newCampaignName}
+            newCampaignType={newCampaignType}
+            onChangeName={setNewCampaignName}
+            onChangeType={setNewCampaignType}
+            onCreateCampaign={handleCreateCampaign}
+            onToggleStatus={toggleCampaignStatus}
+            onTestCall={() => {
+              setCallMode('outbound');
+              setSection('playground');
+            }}
+          />
         )}
 
         {/* =======================================================
@@ -2113,116 +1957,12 @@ export function App() {
             8. VOICE ANALYTICS
            ======================================================= */}
         {section === 'analytics' && (
-          <>
-            <div className="kpi-grid">
-              <div className="card">
-                <div className="kpi-label">AVG TOOL LATENCY</div>
-                <div className="kpi-value">
-                  {perfMetrics?.avgToolDurationMs != null
-                    ? `${(perfMetrics.avgToolDurationMs / 1000).toFixed(2)}s`
-                    : '—'}
-                </div>
-                <div className="muted">
-                  P50:{' '}
-                  {perfMetrics?.p50ToolDurationMs != null
-                    ? `${perfMetrics.p50ToolDurationMs}ms`
-                    : '—'}
-                </div>
-              </div>
-              <div className="card">
-                <div className="kpi-label">P95 TOOL LATENCY</div>
-                <div className="kpi-value">
-                  {perfMetrics?.p95ToolDurationMs != null
-                    ? `${(perfMetrics.p95ToolDurationMs / 1000).toFixed(2)}s`
-                    : '—'}
-                </div>
-                <div className="muted">Samples: {perfMetrics?.sampleCount ?? 0}</div>
-              </div>
-              <div className="card">
-                <div className="kpi-label">TOOL SUCCESS RATE</div>
-                <div className="kpi-value">
-                  {perfMetrics?.toolSuccessRate != null ? `${perfMetrics.toolSuccessRate}%` : '—'}
-                </div>
-                <div className="muted">Zero double-booking violations</div>
-              </div>
-              <div className="card">
-                <div className="kpi-label">BOOKING CONVERSION</div>
-                {(() => {
-                  const callBookedCount = appointments.filter((a) => Boolean(a.callId)).length;
-                  const pct =
-                    calls.length > 0
-                      ? Math.min(100, Math.round((callBookedCount / calls.length) * 100))
-                      : 0;
-                  return (
-                    <>
-                      <div className="kpi-value">{calls.length > 0 ? `${pct}%` : '—'}</div>
-                      <div className="muted">
-                        {callBookedCount} AI call bookings from {calls.length} calls
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-            <div className="two-col-grid">
-              <div className="card">
-                <h3 style={{ marginTop: 0 }}>Infrastructure Health</h3>
-                <div className="status-lines">
-                  <div className="status-line-row">
-                    <span>PostgreSQL Connection Pool</span>
-                    <strong>
-                      {perfMetrics?.dbPool
-                        ? `${perfMetrics.dbPool.total} active / ${perfMetrics.dbPool.idle} idle`
-                        : 'Healthy'}
-                    </strong>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Google Calendar Sync Worker</span>
-                    <span className="badge badge-ok">15s Interval</span>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Voice Runtime Engine</span>
-                    <span className="badge badge-accent">LiveKit Cloud WebRTC</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 style={{ marginTop: 0 }}>Call Outcome Breakdown</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                      <span>AI Call Bookings</span>
-                      <strong>{appointments.filter((a) => Boolean(a.callId)).length}</strong>
-                    </div>
-                    <div className="progress-track">
-                      <div
-                        className="progress-fill ok"
-                        style={{
-                          width: `${calls.length > 0 ? Math.min(100, Math.round((appointments.filter((a) => Boolean(a.callId)).length / Math.max(calls.length, 1)) * 100)) : 20}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                      <span>Leads & Callback Requests</span>
-                      <strong>{leads.length}</strong>
-                    </div>
-                    <div className="progress-track">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${calls.length > 0 ? Math.min(100, Math.round((leads.length / Math.max(calls.length, 1)) * 100)) : 15}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
+          <AnalyticsTab
+            perfMetrics={perfMetrics}
+            appointments={appointments}
+            calls={calls}
+            leads={leads}
+          />
         )}
 
         {/* =======================================================
@@ -2378,125 +2118,12 @@ export function App() {
             10. CHANNEL ACTIVATION (PHONE SIP + WHATSAPP)
            ======================================================= */}
         {section === 'channels' && (
-          <form onSubmit={handleSaveChannels}>
-            {channelSaved && (
-              <div className="success-box">
-                Telephony & WhatsApp channel settings saved for this organization.
-              </div>
-            )}
-            <div className="two-col-grid">
-              <div className="card">
-                <div className="card-header">
-                  <h3>Phone & SIP Trunking</h3>
-                  <span className="badge badge-accent">LiveKit SIP Ready</span>
-                </div>
-                <p className="muted" style={{ marginTop: 0, marginBottom: 16 }}>
-                  Configure inbound reception numbers, outbound caller ID, and human transfer lines
-                  via Twilio or Telnyx SIP trunks.
-                </p>
-                <label className="field-label">Inbound Business Number (E.164)</label>
-                <input
-                  className="input"
-                  value={channelSettings.inboundPhone}
-                  onChange={(e) =>
-                    setChannelSettings({ ...channelSettings, inboundPhone: e.target.value })
-                  }
-                />
-                <label className="field-label">Outbound Campaign Caller ID</label>
-                <input
-                  className="input"
-                  value={channelSettings.outboundCallerId}
-                  onChange={(e) =>
-                    setChannelSettings({ ...channelSettings, outboundCallerId: e.target.value })
-                  }
-                />
-                <label className="field-label">Human Escalation / Transfer Number</label>
-                <input
-                  className="input"
-                  value={channelSettings.transferPhone}
-                  onChange={(e) =>
-                    setChannelSettings({ ...channelSettings, transferPhone: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <h3>WhatsApp Automation</h3>
-                  <span className="badge badge-ok">Meta Cloud API Ready</span>
-                </div>
-                <p className="muted" style={{ marginTop: 0, marginBottom: 16 }}>
-                  Automatically send instant WhatsApp confirmations and reminders right after an AI
-                  call books an appointment.
-                </p>
-                <label className="field-label">WhatsApp Business Number</label>
-                <input
-                  className="input"
-                  value={channelSettings.whatsappNumber}
-                  onChange={(e) =>
-                    setChannelSettings({ ...channelSettings, whatsappNumber: e.target.value })
-                  }
-                />
-
-                <div className="toggle-row">
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 500 }}>Auto-Booking Confirmation</div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      Send WhatsApp receipt immediately when a call books a slot
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={`toggle-switch ${channelSettings.autoWhatsappConfirm ? 'on' : ''}`}
-                    onClick={() =>
-                      setChannelSettings({
-                        ...channelSettings,
-                        autoWhatsappConfirm: !channelSettings.autoWhatsappConfirm,
-                      })
-                    }
-                    aria-label="Toggle auto booking confirmation"
-                  >
-                    <span className="toggle-knob" />
-                  </button>
-                </div>
-
-                <div className="toggle-row">
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 500 }}>1-Hour Reminder Message</div>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      Reduce no-shows with automated appointment reminders
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className={`toggle-switch ${channelSettings.autoWhatsappReminder ? 'on' : ''}`}
-                    onClick={() =>
-                      setChannelSettings({
-                        ...channelSettings,
-                        autoWhatsappReminder: !channelSettings.autoWhatsappReminder,
-                      })
-                    }
-                    aria-label="Toggle reminder message"
-                  >
-                    <span className="toggle-knob" />
-                  </button>
-                </div>
-
-                <label className="field-label">Confirmation Message Template</label>
-                <textarea
-                  className="textarea"
-                  value={channelSettings.whatsappTemplate}
-                  onChange={(e) =>
-                    setChannelSettings({ ...channelSettings, whatsappTemplate: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <button className="btn" type="submit">
-              <Save size={15} /> Save Channel Configuration
-            </button>
-          </form>
+          <ChannelsTab
+            channelSettings={channelSettings}
+            channelSaved={channelSaved}
+            onChange={setChannelSettings}
+            onSubmit={handleSaveChannels}
+          />
         )}
 
         {/* =======================================================
@@ -2607,265 +2234,35 @@ export function App() {
         )}
       </main>
 
-      {selectedCall && (() => {
-        const linkedAppt = appointments.find((a) => a.callId === selectedCall.id);
-        const isOutbound = selectedCall.roomName.toLowerCase().includes('outbound');
-        return (
-          <div
-            onClick={() => setSelectedCall(null)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.6)',
-              zIndex: 1000,
-              display: 'flex',
-              justifyContent: 'flex-end',
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: 'min(480px, 94vw)',
-                height: '100%',
-                background: 'var(--bg-card, #111827)',
-                borderLeft: '1px solid var(--border, #1f2937)',
-                padding: 24,
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 16,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h3 style={{ margin: 0 }}>Call Session Details</h3>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {selectedCall.id}
-                  </div>
-                </div>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setSelectedCall(null)}
-                  title="Close drawer"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-
-              <div className="card" style={{ margin: 0 }}>
-                <div className="status-lines">
-                  <div className="status-line-row">
-                    <span>Direction</span>
-                    <span className="badge">{isOutbound ? 'Outbound' : 'Inbound'}</span>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Room / Session</span>
-                    <code style={{ color: 'var(--accent)', fontSize: 12 }}>
-                      {selectedCall.roomName}
-                    </code>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Status</span>
-                    <span className="badge badge-ok">{selectedCall.status}</span>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Started At</span>
-                    <span>{formatDateTime(selectedCall.startedAt, business?.timezone)}</span>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Ended At</span>
-                    <span>
-                      {selectedCall.endedAt
-                        ? formatDateTime(selectedCall.endedAt, business?.timezone)
-                        : 'Active'}
-                    </span>
-                  </div>
-                  <div className="status-line-row">
-                    <span>Duration</span>
-                    <strong>{formatDuration(selectedCall.durationSeconds)}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card" style={{ margin: 0 }}>
-                <h4 style={{ marginTop: 0, marginBottom: 10 }}>Linked Appointment</h4>
-                {linkedAppt ? (
-                  <div className="status-lines">
-                    <div className="status-line-row">
-                      <span>Booking ID</span>
-                      <span className="badge badge-accent" style={{ fontFamily: 'monospace' }}>
-                        {linkedAppt.bookingCode || `BK${linkedAppt.id.slice(0, 6).toUpperCase()}`}
-                      </span>
-                    </div>
-                    <div className="status-line-row">
-                      <span>Patient</span>
-                      <strong>{linkedAppt.customerName}</strong>
-                    </div>
-                    <div className="status-line-row">
-                      <span>Phone</span>
-                      <span>{linkedAppt.phoneE164}</span>
-                    </div>
-                    {linkedAppt.customerEmail && (
-                      <div className="status-line-row">
-                        <span>Email</span>
-                        <span>{linkedAppt.customerEmail}</span>
-                      </div>
-                    )}
-                    <div className="status-line-row">
-                      <span>Clinic Location</span>
-                      <span>{linkedAppt.address || '—'}</span>
-                    </div>
-                    <div className="status-line-row">
-                      <span>Reason</span>
-                      <span>{linkedAppt.reason}</span>
-                    </div>
-                    <div className="status-line-row">
-                      <span>Scheduled Time</span>
-                      <span>{formatDateTime(linkedAppt.startsAt, linkedAppt.timezone)}</span>
-                    </div>
-                    <div className="status-line-row">
-                      <span>Status</span>
-                      <span
-                        className={`badge ${linkedAppt.status === 'cancelled' ? 'badge-danger' : 'badge-ok'}`}
-                      >
-                        {linkedAppt.status}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="muted" style={{ margin: 0 }}>
-                    No appointment was created during this call (general inquiry, lookup, or
-                    reschedule/cancel check).
-                  </p>
-                )}
-              </div>
-
-              <div className="card" style={{ margin: 0 }}>
-                <h4 style={{ marginTop: 0, marginBottom: 8 }}>Audio & Turn-by-Turn Transcript</h4>
-                <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                  Full WebRTC audio traces, turn latencies, and live transcripts are archived in
-                  LiveKit Cloud Agent Observability.
-                </p>
-                <a
-                  href="https://cloud.livekit.io/projects/d_ai-receptionist-jrmem2uy/agents/CA_8zh49ZVULXCL"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                  <ExternalLink size={14} /> Open LiveKit Observability
-                </a>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {selectedCall && (
+        <CallDetailDrawer
+          call={selectedCall}
+          linkedAppt={appointments.find((a) => a.callId === selectedCall.id)}
+          timezone={business?.timezone}
+          formatDateTime={formatDateTime}
+          formatDuration={formatDuration}
+          onClose={() => setSelectedCall(null)}
+        />
+      )}
 
       {rescheduleTarget && (
-        <div
-          onClick={() => !rescheduling && setRescheduleTarget(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
+        <RescheduleModal
+          target={rescheduleTarget}
+          day={rescheduleDay}
+          slots={rescheduleSlots}
+          selectedSlotId={selectedSlotId}
+          loadingSlots={loadingRescheduleSlots}
+          rescheduling={rescheduling}
+          error={rescheduleError}
+          formatDateTime={formatDateTime}
+          onChangeDay={(val) => {
+            setRescheduleDay(val);
+            void loadRescheduleSlots(val);
           }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="card"
-            style={{ width: 'min(480px, 96vw)', margin: 0 }}
-          >
-            <div className="card-header">
-              <div>
-                <h3 style={{ margin: 0 }}>Reschedule Appointment</h3>
-                <div className="muted" style={{ fontSize: 12.5 }}>
-                  {rescheduleTarget.bookingCode || `BK${rescheduleTarget.id.slice(0, 6).toUpperCase()}`}{' '}
-                  · {rescheduleTarget.customerName}
-                </div>
-              </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={rescheduling}
-                onClick={() => setRescheduleTarget(null)}
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-              Current slot:{' '}
-              <strong>{formatDateTime(rescheduleTarget.startsAt, rescheduleTarget.timezone)}</strong>
-            </div>
-
-            {rescheduleError && <div className="error-box">{rescheduleError}</div>}
-
-            <label className="field-label">Filter Day (optional)</label>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <select
-                className="select"
-                style={{ marginBottom: 0 }}
-                value={rescheduleDay}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setRescheduleDay(val);
-                  void loadRescheduleSlots(val);
-                }}
-              >
-                <option value="">Next available days</option>
-                <option value="today">Today</option>
-                <option value="tomorrow">Tomorrow</option>
-                <option value="monday">Monday</option>
-                <option value="tuesday">Tuesday</option>
-                <option value="wednesday">Wednesday</option>
-                <option value="thursday">Thursday</option>
-                <option value="friday">Friday</option>
-                <option value="saturday">Saturday</option>
-              </select>
-            </div>
-
-            <label className="field-label">Select New Open Slot</label>
-            {loadingRescheduleSlots ? (
-              <p className="muted">Loading live open slots...</p>
-            ) : rescheduleSlots.length === 0 ? (
-              <p className="muted">No open slots available for this day. Try another day.</p>
-            ) : (
-              <select
-                className="select"
-                value={selectedSlotId}
-                onChange={(e) => setSelectedSlotId(e.target.value)}
-              >
-                {rescheduleSlots.map((slot) => (
-                  <option key={slot.slotId} value={slot.slotId}>
-                    {slot.day} {slot.date} · {slot.startTime} – {slot.endTime}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={rescheduling}
-                onClick={() => setRescheduleTarget(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-sm"
-                disabled={rescheduling || !selectedSlotId || loadingRescheduleSlots}
-                onClick={() => void handleConfirmReschedule()}
-              >
-                <CalendarClock size={14} />{' '}
-                {rescheduling ? 'Rescheduling...' : 'Confirm Reschedule'}
-              </button>
-            </div>
-          </div>
-        </div>
+          onSelectSlot={setSelectedSlotId}
+          onConfirm={() => void handleConfirmReschedule()}
+          onClose={() => setRescheduleTarget(null)}
+        />
       )}
 
       <FloatingVoiceOrb

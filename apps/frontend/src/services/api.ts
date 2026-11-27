@@ -87,6 +87,28 @@ export type PerformanceMetrics = {
   } | null;
 };
 
+export type ChannelSettings = {
+  inboundPhone: string;
+  outboundCallerId: string;
+  transferPhone: string;
+  whatsappNumber: string;
+  autoWhatsappConfirm: boolean;
+  autoWhatsappReminder: boolean;
+  whatsappTemplate: string;
+};
+
+export type OutboundCampaign = {
+  id: string;
+  name: string;
+  type: 'Appointment Reminder' | 'Lead Follow-up' | 'Missed Call Callback' | 'Patient Feedback';
+  status: 'active' | 'paused' | 'scheduled';
+  totalTargets: number;
+  completedCalls: number;
+  connectedRate: number;
+  scheduleWindow: string;
+  scriptPreview: string;
+};
+
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '').replace(
   /\/+$/,
   '',
@@ -170,6 +192,32 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ participantName }),
+      },
+      token,
+    ),
+
+  getChannels: (token: string) =>
+    request<{ channels: ChannelSettings | null }>('/api/v1/workspace/channels', {}, token),
+
+  saveChannels: (token: string, channels: ChannelSettings) =>
+    request<{ channels: ChannelSettings }>(
+      '/api/v1/workspace/channels',
+      {
+        method: 'PUT',
+        body: JSON.stringify(channels),
+      },
+      token,
+    ),
+
+  getCampaigns: (token: string) =>
+    request<{ campaigns: OutboundCampaign[] | null }>('/api/v1/workspace/campaigns', {}, token),
+
+  saveCampaigns: (token: string, campaigns: OutboundCampaign[]) =>
+    request<{ campaigns: OutboundCampaign[] }>(
+      '/api/v1/workspace/campaigns',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ campaigns }),
       },
       token,
     ),
