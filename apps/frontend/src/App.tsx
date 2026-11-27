@@ -687,7 +687,12 @@ export function App() {
     );
   }
 
-  const initials = user.fullName
+  const clinicBrandPrefix = (business?.name?.split(' ')[0] || 'CareFirst').trim();
+  const formatDisplayName = (name: string) =>
+    name.replace(/^NorthStar\b/i, clinicBrandPrefix);
+  const displayUserName = formatDisplayName(user.fullName);
+
+  const initials = displayUserName
     .split(' ')
     .map((p) => p[0])
     .join('')
@@ -852,7 +857,7 @@ export function App() {
                   textOverflow: 'ellipsis',
                 }}
               >
-                {user.fullName}
+                {displayUserName}
               </div>
               <div className="muted" style={{ fontSize: 11.5, textTransform: 'capitalize' }}>
                 {user.role}
@@ -2216,7 +2221,7 @@ export function App() {
                     {team.map((member) => (
                       <tr key={member.id}>
                         <td>
-                          <strong>{member.fullName}</strong>
+                          <strong>{formatDisplayName(member.fullName)}</strong>
                         </td>
                         <td>{member.email}</td>
                         <td>
