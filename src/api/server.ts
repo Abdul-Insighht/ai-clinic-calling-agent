@@ -301,6 +301,8 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
           emergencyPolicy: z.string().min(1).optional(),
           aiVoice: z.string().min(1).optional(),
           aiModel: z.string().min(1).optional(),
+          services: z.array(z.string().min(1)).optional(),
+          hours: z.record(z.string(), z.string().min(1)).optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
@@ -310,7 +312,8 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
         const context = getBusinessContext(req);
         if (config.database.isPostgresConfigured) {
           const d = parsed.data;
-          await getDbPool().query(
+          const pool = getDbPool();
+          await pool.query(
             `
             UPDATE aibitsol.businesses
             SET name = COALESCE($2, name),
@@ -338,6 +341,52 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
               d.aiModel ?? null,
             ],
           );
+
+          if (d.services) {
+            const cleanServices = [...new Set(d.services.map((s) => s.trim()).filter(Boolean))];
+            await pool.query(
+              `UPDATE aibitsol.services SET is_active = FALSE WHERE business_id = $1`,
+              [context.businessId],
+            );
+            for (const svcName of cleanServices) {
+              await pool.query(
+                `
+                INSERT INTO aibitsol.services (business_id, name, duration_minutes, is_active)
+                VALUES ($1, $2, 60, TRUE)
+                ON CONFLICT (business_id, name) DO UPDATE SET is_active = TRUE
+                `,
+                [context.businessId, svcName],
+              );
+            }
+          }
+
+          if (d.hours) {
+            const dayNameToIndex: Record<string, number> = {
+              sunday: 0,
+              monday: 1,
+              tuesday: 2,
+              wednesday: 3,
+              thursday: 4,
+              friday: 5,
+              saturday: 6,
+            };
+            for (const [dayKey, labelRaw] of Object.entries(d.hours)) {
+              const dayIndex = dayNameToIndex[dayKey.toLowerCase()];
+              if (dayIndex === undefined) continue;
+              const label = labelRaw.trim();
+              const isClosed = /^closed$/i.test(label);
+              await pool.query(
+                `
+                UPDATE aibitsol.business_hours
+                SET display_label = $3,
+                    is_closed = $4
+                WHERE business_id = $1 AND day_of_week = $2
+                `,
+                [context.businessId, dayIndex, label, isClosed],
+              );
+            }
+          }
+
           businessService.invalidateProfileCache(context.businessId);
         }
 
@@ -367,6 +416,28 @@ export async function buildApiServer(deps: ApiServerDeps = {}): Promise<FastifyI
         return reply.code(404).send({ error: 'APPOINTMENT_NOT_FOUND' });
       }
       return { appointment: cancelled };
+    });
+
+    protectedRoutes.post('/api/v1/appointments/:id/reschedule', async (req, reply) => {
+      const params = z.object({ id: z.string().min(1) }).safeParse(req.params);
+      const body = z.object({ slotId: z.string().min(1) }).safeParse(req.body);
+      if (!params.success || !body.success) {
+        return reply.code(400).send({ error: 'INVALID_RESCHEDULE_INPUT' });
+      }
+      const context = getBusinessContext(req);
+      if (!appointmentRepository.rescheduleAppointment) {
+        return reply.code(501).send({ error: 'RESCHEDULE_UNSUPPORTED' });
+      }
+      const result = await appointmentRepository.rescheduleAppointment(
+        context,
+        params.data.id,
+        body.data.slotId,
+      );
+      if (!result.success) {
+        const status = result.error === 'APPOINTMENT_NOT_FOUND' ? 404 : 409;
+        return reply.code(status).send({ error: result.error, message: result.message });
+      }
+      return { appointment: result.appointment };
     });
 
     protectedRoutes.get('/api/v1/calls', async (req) => {

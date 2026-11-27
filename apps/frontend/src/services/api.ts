@@ -138,6 +138,16 @@ export const api = {
       token,
     ),
 
+  rescheduleAppointment: (token: string, appointmentId: string, slotId: string) =>
+    request<{ appointment: BookedAppointmentItem }>(
+      `/api/v1/appointments/${encodeURIComponent(appointmentId)}/reschedule`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ slotId }),
+      },
+      token,
+    ),
+
   getCalls: (token: string) => request<{ calls: CallLogItem[] }>('/api/v1/calls', {}, token),
 
   getAvailability: (token: string, requestedDay?: string) =>

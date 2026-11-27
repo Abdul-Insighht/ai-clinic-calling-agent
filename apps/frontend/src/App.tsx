@@ -6,9 +6,11 @@ import {
   Bot,
   Calendar,
   CalendarCheck2,
+  CalendarClock,
   ChevronDown,
   ChevronUp,
   Download,
+  ExternalLink,
   History,
   LayoutDashboard,
   LogOut,
@@ -30,6 +32,7 @@ import {
   Sparkles,
   UserCheck,
   Users,
+  X,
   XCircle,
 } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
@@ -198,6 +201,17 @@ export function App() {
   const [cancellingApptId, setCancellingApptId] = useState<string | null>(null);
   const prevCallStatusRef = useRef<LiveCallSnapshot['status']>('idle');
 
+  // Phase 2: Call Detail Drawer, Appointment Reschedule Modal, and Services Editor state
+  const [selectedCall, setSelectedCall] = useState<CallLogItem | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<BookedAppointmentItem | null>(null);
+  const [rescheduleDay, setRescheduleDay] = useState<string>('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<AvailableSlot[]>([]);
+  const [selectedSlotId, setSelectedSlotId] = useState<string>('');
+  const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+  const [newServiceName, setNewServiceName] = useState('');
+
   // Voice Playground & Orb state
   const orbControllerRef = useRef<OrbController | null>(null);
   const [callMode, setCallMode] = useState<'inbound' | 'outbound'>('inbound');
@@ -232,6 +246,7 @@ export function App() {
     pricingPolicy: string;
     emergencyPolicy: string;
     aiVoice: string;
+    services: string[];
     hours: Record<string, string>;
   } | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -332,6 +347,7 @@ export function App() {
       pricingPolicy: biz.pricingPolicy,
       emergencyPolicy: biz.emergencyPolicy,
       aiVoice: biz.aiVoice ?? 'Puck',
+      services: [...biz.services],
       hours: { ...biz.hours },
     });
   }, []);
@@ -421,6 +437,66 @@ export function App() {
     }, 30_000);
     return () => window.clearInterval(interval);
   }, [token, callSnap.status, section, loadDashboard]);
+
+  async function loadRescheduleSlots(day?: string) {
+    if (!token) return;
+    setLoadingRescheduleSlots(true);
+    setRescheduleError(null);
+    try {
+      const res = await api.getAvailability(token, day || undefined);
+      const nextSlots = Array.isArray(res.availableSlots) ? res.availableSlots : [];
+      setRescheduleSlots(nextSlots);
+      setSelectedSlotId(nextSlots[0]?.slotId ?? '');
+    } catch (err) {
+      setRescheduleError(err instanceof Error ? err.message : 'Failed to load open slots');
+      setRescheduleSlots([]);
+      setSelectedSlotId('');
+    } finally {
+      setLoadingRescheduleSlots(false);
+    }
+  }
+
+  function openRescheduleModal(appt: BookedAppointmentItem) {
+    setRescheduleTarget(appt);
+    setRescheduleDay('');
+    setRescheduleError(null);
+    void loadRescheduleSlots('');
+  }
+
+  async function handleConfirmReschedule() {
+    if (!token || !rescheduleTarget || !selectedSlotId) return;
+    setRescheduling(true);
+    setRescheduleError(null);
+    try {
+      await api.rescheduleAppointment(token, rescheduleTarget.id, selectedSlotId);
+      setRescheduleTarget(null);
+      await loadDashboard();
+    } catch (err) {
+      setRescheduleError(err instanceof Error ? err.message : 'Failed to reschedule appointment');
+    } finally {
+      setRescheduling(false);
+    }
+  }
+
+  function handleAddService() {
+    if (!profileForm) return;
+    const trimmed = newServiceName.trim();
+    if (!trimmed) return;
+    if (profileForm.services.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
+      setNewServiceName('');
+      return;
+    }
+    setProfileForm({ ...profileForm, services: [...profileForm.services, trimmed] });
+    setNewServiceName('');
+  }
+
+  function handleRemoveService(name: string) {
+    if (!profileForm) return;
+    setProfileForm({
+      ...profileForm,
+      services: profileForm.services.filter((s) => s !== name),
+    });
+  }
 
   async function handleCancelAppointment(appt: BookedAppointmentItem) {
     if (!token) return;
@@ -526,6 +602,7 @@ export function App() {
         pricingPolicy: profileForm.pricingPolicy.trim(),
         emergencyPolicy: profileForm.emergencyPolicy.trim(),
         aiVoice: profileForm.aiVoice,
+        services: profileForm.services,
         hours: profileForm.hours,
       });
       setBusiness(res.business);
@@ -1769,15 +1846,24 @@ export function App() {
                               </td>
                               <td>
                                 {appt.status === 'confirmed' ? (
-                                  <button
-                                    className="btn btn-secondary btn-sm"
-                                    disabled={cancellingApptId === appt.id}
-                                    onClick={() => void handleCancelAppointment(appt)}
-                                    title="Cancel appointment"
-                                  >
-                                    <XCircle size={13} />{' '}
-                                    {cancellingApptId === appt.id ? 'Cancelling...' : 'Cancel'}
-                                  </button>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={() => openRescheduleModal(appt)}
+                                      title="Reschedule appointment"
+                                    >
+                                      <CalendarClock size={13} /> Reschedule
+                                    </button>
+                                    <button
+                                      className="btn btn-secondary btn-sm"
+                                      disabled={cancellingApptId === appt.id}
+                                      onClick={() => void handleCancelAppointment(appt)}
+                                      title="Cancel appointment"
+                                    >
+                                      <XCircle size={13} />{' '}
+                                      {cancellingApptId === appt.id ? 'Cancelling...' : 'Cancel'}
+                                    </button>
+                                  </div>
                                 ) : (
                                   <span className="muted">—</span>
                                 )}
@@ -1944,16 +2030,23 @@ export function App() {
                     <tr>
                       <th>Direction</th>
                       <th>Room / Session</th>
+                      <th>Outcome / Booking</th>
                       <th>Status</th>
                       <th>Started At</th>
                       <th>Duration</th>
+                      <th>Details</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredCalls.map((call) => {
                       const isOutbound = call.roomName.toLowerCase().includes('outbound');
+                      const linkedAppt = appointments.find((a) => a.callId === call.id);
                       return (
-                        <tr key={call.id}>
+                        <tr
+                          key={call.id}
+                          onClick={() => setSelectedCall(call)}
+                          style={{ cursor: 'pointer' }}
+                        >
                           <td>
                             <span className="badge">
                               {isOutbound ? (
@@ -1973,6 +2066,16 @@ export function App() {
                             </code>
                           </td>
                           <td>
+                            {linkedAppt ? (
+                              <span className="badge badge-ok" style={{ fontFamily: 'monospace' }}>
+                                {linkedAppt.bookingCode || `BK${linkedAppt.id.slice(0, 6).toUpperCase()}`}{' '}
+                                · {linkedAppt.customerName}
+                              </span>
+                            ) : (
+                              <span className="muted">Inquiry / No booking</span>
+                            )}
+                          </td>
+                          <td>
                             <span
                               className={`badge ${
                                 call.status === 'completed' || call.status === 'active'
@@ -1985,6 +2088,17 @@ export function App() {
                           </td>
                           <td>{formatDateTime(call.startedAt, business?.timezone)}</td>
                           <td>{formatDuration(call.durationSeconds)}</td>
+                          <td>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCall(call);
+                              }}
+                            >
+                              Inspect
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -2182,14 +2296,59 @@ export function App() {
               onChange={(e) => setProfileForm({ ...profileForm, description: e.target.value })}
             />
 
-            <div className="field-label">Active Services</div>
-            <div className="pill-list">
-              {business.services.map((svc) => (
-                <span className="service-pill" key={svc}>
+            <div className="field-label">Active Services (click × to remove, Save Knowledge Base to sync)</div>
+            <div className="pill-list" style={{ marginBottom: 10 }}>
+              {profileForm.services.map((svc) => (
+                <span
+                  className="service-pill"
+                  key={svc}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
                   {svc}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveService(svc)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'inline-flex',
+                      }}
+                      title={`Remove ${svc}`}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </span>
               ))}
             </div>
+            {canEdit && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, maxWidth: 420 }}>
+                <input
+                  className="input"
+                  style={{ marginBottom: 0 }}
+                  value={newServiceName}
+                  onChange={(e) => setNewServiceName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddService();
+                    }
+                  }}
+                  placeholder="Add new clinic service (e.g. ECG & Heart Screening)"
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleAddService}
+                >
+                  <Plus size={14} /> Add
+                </button>
+              </div>
+            )}
 
             <h4 style={{ margin: '12px 0 10px' }}>Weekly Operating Hours</h4>
             <div className="form-grid">
@@ -2447,6 +2606,267 @@ export function App() {
           </div>
         )}
       </main>
+
+      {selectedCall && (() => {
+        const linkedAppt = appointments.find((a) => a.callId === selectedCall.id);
+        const isOutbound = selectedCall.roomName.toLowerCase().includes('outbound');
+        return (
+          <div
+            onClick={() => setSelectedCall(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 1000,
+              display: 'flex',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: 'min(480px, 94vw)',
+                height: '100%',
+                background: 'var(--bg-card, #111827)',
+                borderLeft: '1px solid var(--border, #1f2937)',
+                padding: 24,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>Call Session Details</h3>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {selectedCall.id}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setSelectedCall(null)}
+                  title="Close drawer"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div className="card" style={{ margin: 0 }}>
+                <div className="status-lines">
+                  <div className="status-line-row">
+                    <span>Direction</span>
+                    <span className="badge">{isOutbound ? 'Outbound' : 'Inbound'}</span>
+                  </div>
+                  <div className="status-line-row">
+                    <span>Room / Session</span>
+                    <code style={{ color: 'var(--accent)', fontSize: 12 }}>
+                      {selectedCall.roomName}
+                    </code>
+                  </div>
+                  <div className="status-line-row">
+                    <span>Status</span>
+                    <span className="badge badge-ok">{selectedCall.status}</span>
+                  </div>
+                  <div className="status-line-row">
+                    <span>Started At</span>
+                    <span>{formatDateTime(selectedCall.startedAt, business?.timezone)}</span>
+                  </div>
+                  <div className="status-line-row">
+                    <span>Ended At</span>
+                    <span>
+                      {selectedCall.endedAt
+                        ? formatDateTime(selectedCall.endedAt, business?.timezone)
+                        : 'Active'}
+                    </span>
+                  </div>
+                  <div className="status-line-row">
+                    <span>Duration</span>
+                    <strong>{formatDuration(selectedCall.durationSeconds)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ margin: 0 }}>
+                <h4 style={{ marginTop: 0, marginBottom: 10 }}>Linked Appointment</h4>
+                {linkedAppt ? (
+                  <div className="status-lines">
+                    <div className="status-line-row">
+                      <span>Booking ID</span>
+                      <span className="badge badge-accent" style={{ fontFamily: 'monospace' }}>
+                        {linkedAppt.bookingCode || `BK${linkedAppt.id.slice(0, 6).toUpperCase()}`}
+                      </span>
+                    </div>
+                    <div className="status-line-row">
+                      <span>Patient</span>
+                      <strong>{linkedAppt.customerName}</strong>
+                    </div>
+                    <div className="status-line-row">
+                      <span>Phone</span>
+                      <span>{linkedAppt.phoneE164}</span>
+                    </div>
+                    {linkedAppt.customerEmail && (
+                      <div className="status-line-row">
+                        <span>Email</span>
+                        <span>{linkedAppt.customerEmail}</span>
+                      </div>
+                    )}
+                    <div className="status-line-row">
+                      <span>Clinic Location</span>
+                      <span>{linkedAppt.address || '—'}</span>
+                    </div>
+                    <div className="status-line-row">
+                      <span>Reason</span>
+                      <span>{linkedAppt.reason}</span>
+                    </div>
+                    <div className="status-line-row">
+                      <span>Scheduled Time</span>
+                      <span>{formatDateTime(linkedAppt.startsAt, linkedAppt.timezone)}</span>
+                    </div>
+                    <div className="status-line-row">
+                      <span>Status</span>
+                      <span
+                        className={`badge ${linkedAppt.status === 'cancelled' ? 'badge-danger' : 'badge-ok'}`}
+                      >
+                        {linkedAppt.status}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ margin: 0 }}>
+                    No appointment was created during this call (general inquiry, lookup, or
+                    reschedule/cancel check).
+                  </p>
+                )}
+              </div>
+
+              <div className="card" style={{ margin: 0 }}>
+                <h4 style={{ marginTop: 0, marginBottom: 8 }}>Audio & Turn-by-Turn Transcript</h4>
+                <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+                  Full WebRTC audio traces, turn latencies, and live transcripts are archived in
+                  LiveKit Cloud Agent Observability.
+                </p>
+                <a
+                  href="https://cloud.livekit.io/projects/d_ai-receptionist-jrmem2uy/agents/CA_8zh49ZVULXCL"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <ExternalLink size={14} /> Open LiveKit Observability
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {rescheduleTarget && (
+        <div
+          onClick={() => !rescheduling && setRescheduleTarget(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="card"
+            style={{ width: 'min(480px, 96vw)', margin: 0 }}
+          >
+            <div className="card-header">
+              <div>
+                <h3 style={{ margin: 0 }}>Reschedule Appointment</h3>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  {rescheduleTarget.bookingCode || `BK${rescheduleTarget.id.slice(0, 6).toUpperCase()}`}{' '}
+                  · {rescheduleTarget.customerName}
+                </div>
+              </div>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={rescheduling}
+                onClick={() => setRescheduleTarget(null)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              Current slot:{' '}
+              <strong>{formatDateTime(rescheduleTarget.startsAt, rescheduleTarget.timezone)}</strong>
+            </div>
+
+            {rescheduleError && <div className="error-box">{rescheduleError}</div>}
+
+            <label className="field-label">Filter Day (optional)</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <select
+                className="select"
+                style={{ marginBottom: 0 }}
+                value={rescheduleDay}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRescheduleDay(val);
+                  void loadRescheduleSlots(val);
+                }}
+              >
+                <option value="">Next available days</option>
+                <option value="today">Today</option>
+                <option value="tomorrow">Tomorrow</option>
+                <option value="monday">Monday</option>
+                <option value="tuesday">Tuesday</option>
+                <option value="wednesday">Wednesday</option>
+                <option value="thursday">Thursday</option>
+                <option value="friday">Friday</option>
+                <option value="saturday">Saturday</option>
+              </select>
+            </div>
+
+            <label className="field-label">Select New Open Slot</label>
+            {loadingRescheduleSlots ? (
+              <p className="muted">Loading live open slots...</p>
+            ) : rescheduleSlots.length === 0 ? (
+              <p className="muted">No open slots available for this day. Try another day.</p>
+            ) : (
+              <select
+                className="select"
+                value={selectedSlotId}
+                onChange={(e) => setSelectedSlotId(e.target.value)}
+              >
+                {rescheduleSlots.map((slot) => (
+                  <option key={slot.slotId} value={slot.slotId}>
+                    {slot.day} {slot.date} · {slot.startTime} – {slot.endTime}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={rescheduling}
+                onClick={() => setRescheduleTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm"
+                disabled={rescheduling || !selectedSlotId || loadingRescheduleSlots}
+                onClick={() => void handleConfirmReschedule()}
+              >
+                <CalendarClock size={14} />{' '}
+                {rescheduling ? 'Rescheduling...' : 'Confirm Reschedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <FloatingVoiceOrb
         authToken={token}
