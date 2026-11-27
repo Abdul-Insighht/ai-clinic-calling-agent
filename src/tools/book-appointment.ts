@@ -120,8 +120,8 @@ export function createBookAppointmentTool(context: BusinessContext, bookingServi
           error: 'CONFIRMATION_REQUIRED',
           spelledEmailForReadback,
           message: spelledEmailForReadback
-            ? `NOT BOOKED YET. Warmly read back these details to the caller right now — Name: ${customerName}, Phone: ${phone}, Address: ${address || 'not provided'}, Service: ${reason}, and email spelled as "${spelledEmailForReadback}" — then ask naturally: "Does everything sound right?" STOP and wait for the caller to confirm before calling bookAppointment again.`
-            : `NOT BOOKED YET. Warmly read back these details to the caller right now — Name: ${customerName}, Phone: ${phone}, Address: ${address || 'not provided'}, Service: ${reason} — then ask naturally: "Does everything sound right?" STOP and wait for the caller to confirm before calling bookAppointment again.`,
+            ? `NOT BOOKED YET. Warmly read back these details to the caller right now — Patient: ${customerName}, Phone: ${phone}, Service: ${reason}, and email spelled as "${spelledEmailForReadback}" — then ask naturally: "Does everything sound right?" STOP and wait for the caller to confirm before calling bookAppointment again.`
+            : `NOT BOOKED YET. Warmly read back these details to the caller right now — Patient: ${customerName}, Phone: ${phone}, Service: ${reason} — then ask naturally: "Does everything sound right?" STOP and wait for the caller to confirm before calling bookAppointment again.`,
         };
       }
 

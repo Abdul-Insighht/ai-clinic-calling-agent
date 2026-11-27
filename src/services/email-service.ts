@@ -59,7 +59,8 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
   text: string;
   html: string;
 } {
-  const { booking, businessName, isUpdate, isCancelled, isRescheduled } = payload;
+  const { booking, businessName, businessLocation, isUpdate, isCancelled, isRescheduled } = payload;
+  const clinicLocation = businessLocation || 'Main Medical Plaza, City Center';
   const tz = booking.timezone || 'Asia/Karachi';
   const startLocal = DateTime.fromISO(booking.startsAt, { zone: 'utc' }).setZone(tz);
   const endLocal = DateTime.fromISO(booking.endsAt, { zone: 'utc' }).setZone(tz);
@@ -100,11 +101,12 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
     intro,
     '',
     `Booking ID: ${shortRef}`,
+    `Patient: ${booking.customerName}`,
     `Service / Reason: ${booking.reason}`,
     `Date: ${dateDisplay}`,
     `Time: ${timeDisplay}`,
     `Phone: ${booking.phoneE164}`,
-    `Address: ${booking.address || 'Not provided'}`,
+    `Clinic Location: ${clinicLocation}`,
     '',
     `Need to check, reschedule, update, or cancel? Call ${businessName} and mention Booking ID ${shortRef}.`,
   ].join('\n');
@@ -130,7 +132,7 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#38bdf8;font-size:14px;font-weight:700;font-family:monospace;">${escapeHtml(shortRef)}</td>
           </tr>
           <tr>
-            <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#94a3b8;font-size:13px;">Customer</td>
+            <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#94a3b8;font-size:13px;">Patient</td>
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#eef2ff;font-size:13px;font-weight:600;">${escapeHtml(booking.customerName)}</td>
           </tr>
           <tr>
@@ -150,8 +152,8 @@ function buildConfirmationEmail(payload: BookingEmailPayload): {
             <td style="padding:11px 14px;border-bottom:1px solid #273357;color:#eef2ff;font-size:13px;">${escapeHtml(booking.phoneE164)}</td>
           </tr>
           <tr>
-            <td style="padding:11px 14px;color:#94a3b8;font-size:13px;">Service Address</td>
-            <td style="padding:11px 14px;color:#eef2ff;font-size:13px;">${escapeHtml(booking.address || 'Not provided')}</td>
+            <td style="padding:11px 14px;color:#94a3b8;font-size:13px;">Clinic Location</td>
+            <td style="padding:11px 14px;color:#eef2ff;font-size:13px;">${escapeHtml(clinicLocation)}</td>
           </tr>
         </table>
         <p style="margin:18px 0 0;font-size:12.5px;color:#94a3b8;">
