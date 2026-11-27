@@ -1,153 +1,173 @@
-# Testing vs. Production Deployment, Telephony (SIP) & Cost Guide
+# Complete Lifecycle, Testing-to-Production, Telephony (SIP) & Cost Guide
 
-This guide provides a complete, supervisor- and client-ready roadmap covering:
-1. **Testing / Sandbox Mode** (what is currently running for CareFirst Medical Clinic)
-2. **Production Mode Criteria & Upgrade Steps**
-3. **Connecting an Organization's Own Business Phone Number (SIP Trunking)**
-4. **Estimated Production Cost Breakdown** (WhatsApp, Phone/SIP, AI Voice, Hosting)
+This document is the master operational & business reference for **VoxDesk Universal AI Calling Assistant** (baseline: **CareFirst Medical Clinic**). It covers:
 
----
-
-## 1. Testing / Sandbox Mode (Current CareFirst Setup)
-
-Use this workflow for **development, FYP/supervisor demos, and pre-launch client acceptance testing**.
-
-| Component | Current Testing Setup | Notes |
-| :--- | :--- | :--- |
-| **Voice Calling** | Browser WebRTC (`https://voxdesk.abdulrehmanai.tech/` & LiveKit Agent Console) | No phone carrier fees during testing |
-| **Voice AI Agent** | LiveKit Cloud (`CA_8zh49ZVULXCL`) + Gemini 3.1 Flash Live + Krisp BVC | Live production-grade voice pipeline |
-| **Backend API** | Render Free Web Service (`https://ai-clinic-calling-agent.onrender.com`) | May cold-start after 15 min inactivity |
-| **Database** | Neon PostgreSQL Free Tier | Serverless Postgres, scales to zero |
-| **Frontend Dashboard** | Vercel Hobby Tier | Auto-deploys from `main` |
-| **Email** | Gmail SMTP (16-char App Password) | Up to ~500 emails/day |
-| **WhatsApp** | Meta Cloud API Test Number / `WHATSAPP_TEST_RECIPIENT` | Sends to whitelisted test numbers |
-| **Google Calendar** | Service Account shared with test calendar | Full 2-way busy check + booking sync |
-
-### Step-by-Step Testing Verification Checklist
-1. Fill `config/organization.json` and run:
-   ```bash
-   pnpm org:validate
-   pnpm org:preview
-   node scripts/org-cli.ts apply config/organization.json --confirm
-   ```
-2. Run automated checks:
-   ```bash
-   pnpm typecheck
-   pnpm test
-   pnpm frontend:build
-   ```
-3. Run a **live end-to-end test call** on the dashboard:
-   - Verify greeting uses the organization's name and assistant name.
-   - Ask about hours, location, and services (verify zero hallucinated prices/services).
-   - Book a slot → verify Booking ID (`BKxxx`), Google Calendar event, Email receipt, WhatsApp receipt, and Dashboard Appointments + Call Logs + Linked Booking Drawer.
-   - Test **Reschedule** and **Cancel** from both voice and Dashboard.
+1. **Current Free Testing System** — What is running today, **where every free API/service was obtained**, exact setup steps, and what it is suitable for.
+2. **Complete 6-Phase Lifecycle** — Development → Staging → Client UAT → Production Readiness → Go-Live → Operations.
+3. **Clear Business Scale Criteria** — Exact definitions of **Free Testing**, **Small Business**, **Growing Business**, and **Large Enterprise** (calls/day, concurrency, infrastructure, and verified cost breakdown).
+4. **Telephony & Business Phone Number Integration (SIP)** — Connecting a new number or an organization's existing Pakistan/international number.
+5. **Client / End-User Guide** & **30-Point Go-Live Sign-Off Checklist**.
 
 ---
 
-## 2. Production Mode — Criteria & Step-by-Step Upgrade
+## 1. Current Free Testing System (What Is Running Right Now)
 
-Before handing the system to a live organization handling real customers/patients, complete every step below:
+Right now, CareFirst Medical Clinic runs on a **$0/month Sandbox & Testing Stack**. Every single component below uses an official free/developer tier:
 
-### Step 1: Always-On Infrastructure (No Cold Starts)
-- **Backend API (Render):** Upgrade from Free → **Starter ($7/mo)** or **Standard ($25/mo)** so `/api/v1/*` never sleeps and responds in <200ms.
-- **Database (Neon):** Enable **Neon Launch ($19/mo+)** with automated daily backups, point-in-time recovery, and connection pooling.
-- **LiveKit Cloud:** Upgrade to **Ship ($50/mo)** or **Scale** with `numIdleProcesses: 1` (already configured in `src/main.ts`) so calls answer with zero container cold-start.
+| Component | Current Provider & Tier | Where to Get It (Exact Portal) | Steps Used to Obtain & Configure |
+| :--- | :--- | :--- | :--- |
+| **AI Voice LLM** | Google Gemini 3.1 Flash Live Preview (**Free Dev Tier**) | https://aistudio.google.com/apikey | Sign in with Google → Create API Key → Set `GOOGLE_API_KEY` in `.env` & LiveKit secrets |
+| **Voice Runtime & WebRTC** | LiveKit Cloud (**Build — $0/mo**) | https://cloud.livekit.io/ | Create project → Copy `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` → `lk agent create` / `lk agent deploy` |
+| **Database** | Neon PostgreSQL (**Free Tier — $0/mo**) | https://console.neon.tech/ | Create Postgres project → Copy pooled `DATABASE_URL` → Run `pnpm db:migrate && pnpm db:seed` |
+| **Backend REST API** | Render Web Service (**Free Tier — $0/mo**) | https://dashboard.render.com/ | Connect GitHub repo → Auto-detect `render.yaml` → Add env vars → Verify `/health/ready` |
+| **Web Dashboard** | Vercel (**Hobby — $0/mo**) | https://vercel.com/ | Import GitHub repo → Root Dir `apps/frontend` → Set `VITE_API_BASE_URL` → Connect custom domain |
+| **Google Calendar** | Google Cloud Calendar API (**Free Quota**) | https://console.cloud.google.com/ | Enable Calendar API → Create Service Account + JSON key → Share calendar with `client_email` ("Make changes to events") |
+| **Email Receipts** | Gmail SMTP (**Free — ~500/day**) | https://myaccount.google.com/apppasswords | Enable 2FA on Gmail → Generate 16-char App Password → Set `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` |
+| **WhatsApp Receipts** | Meta WhatsApp Cloud API (**Sandbox Test Number — $0**) | https://developers.facebook.com/ | Create Meta App → Add WhatsApp → Copy `WHATSAPP_PHONE_NUMBER_ID` & `WHATSAPP_ACCESS_TOKEN` → Whitelist test phone in `WHATSAPP_TEST_RECIPIENT` |
 
-### Step 2: Production WhatsApp Business API (Meta)
-1. Verify your business in **Meta Business Suite** (requires business registration document + domain verification).
-2. Register the organization's **dedicated WhatsApp Business phone number** (must not be active on personal WhatsApp app).
-3. Add a payment method in Meta Business Manager (for paid Utility template conversations).
-4. Create and get Meta approval for **Utility Templates** (`booking_confirmed`, `booking_rescheduled`, `booking_cancelled`).
-5. Generate a permanent **System User Access Token** (never expires).
-6. In `.env` & LiveKit/Render secrets:
-   - Set `WHATSAPP_PHONE_NUMBER_ID` & `WHATSAPP_ACCESS_TOKEN`
-   - **Clear `WHATSAPP_TEST_RECIPIENT=`** (leave empty so messages go to real callers!)
-
-### Step 3: Production Email (Custom Domain Deliverability)
-- Move from personal Gmail SMTP to **Resend** (`RESEND_API_KEY`) or **Google Workspace SMTP** with **SPF, DKIM, and DMARC** DNS records on the organization's domain (e.g., `appointments@carefirstclinic.com`) so booking emails never land in spam.
-
-### Step 4: Security & Access Hardening
-- Rotate all API keys (`GOOGLE_API_KEY`, `LIVEKIT_API_SECRET`, `SMTP_PASS`, `WHATSAPP_ACCESS_TOKEN`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`).
-- Remove pre-filled demo login credentials in `apps/frontend/src/App.tsx` and update the admin password in PostgreSQL.
-- Set `NODE_ENV=production` and `LOG_LEVEL=info` across LiveKit Cloud and Render.
-- Set up uptime monitoring (e.g., BetterStack / UptimeRobot) on `GET /health/ready`.
+### What This Free Testing Setup IS Good For (and Its Limits)
+- **Suitable for:** FYP / supervisor evaluation, internal QA, client demos, UAT acceptance calls (~50–100 test calls/month, 1–2 concurrent calls, browser WebRTC calling).
+- **NOT suitable for live commercial customers because:**
+  - Render Free sleeps after 15 minutes of inactivity (causes 30–50s cold start on the first API call).
+  - Gemini Free Tier has strict RPM/RPD rate limits and may log/sample dev traffic depending on Google terms.
+  - Meta WhatsApp Test Number only delivers to manually whitelisted test phone numbers.
+  - Browser WebRTC requires opening a web link — real callers need a regular phone number (SIP Trunk).
 
 ---
 
-## 3. Connecting an Organization's Business Phone Number (SIP Trunking)
+## 2. Complete 6-Phase Lifecycle (Development → Production)
 
-To let real callers dial a **regular phone number** (landline or mobile) and speak directly to the AI Calling Assistant, connect a **SIP Trunk** to **LiveKit Cloud**.
+### Phase 1: Development / Local Testing
+- Separate local/dev DB and test credentials (never touch live customer data).
+- Run verified project commands:
+  ```bash
+  pnpm install
+  pnpm typecheck
+  pnpm test
+  pnpm frontend:build
+  pnpm org:validate
+  pnpm org:preview
+  ```
+- Verify all organization config validation rules (missing name, invalid services, bad duration, disabled workflows) and core booking/reschedule/cancel/double-booking tests.
 
-### Architecture Flow
+### Phase 2: Cloud Staging / Sandbox
+- Keep **Staging** strictly separate from **Production** (separate Neon branch/DB, separate LiveKit project, separate Google test calendar, `WHATSAPP_TEST_RECIPIENT` set).
+- Verify `/health/live`, `/health/ready`, end-to-end WebRTC call, Google Calendar sync, Email, WhatsApp, and Dashboard logs.
+
+### Phase 3: Client Onboarding & UAT (User Acceptance Testing)
+- Collect the 12-section client profile (`config/organization.json`) and present `pnpm org:preview` for written client approval (name, services, prices, hours, greeting, language, policies, human transfer number, privacy notice).
+- Have the client's staff execute real UAT calls: normal inquiry, booking, reschedule, cancel, out-of-hours, unavailable service, emergency/escalation, caller interruption, noisy room, and Calendar/Email failure fallback.
+- **Exit Gate:** Written client UAT sign-off before go-live.
+
+### Phase 4: Production Readiness (Mandatory Before Go-Live)
+- **Infrastructure:** Always-on paid backend compute, persistent LiveKit agent (`numIdleProcesses >= 1`), paid Neon DB with scheduled backups **plus a verified restore test**, custom domain HTTPS, connection pooling, and rate limits.
+- **Security:** Rotate all dev/exposed API keys, remove pre-filled demo login credentials in `apps/frontend/src/App.tsx`, update seeded admin password, restrict CORS allowlist, keep `.env` out of Git, and enforce PII redaction in logs.
+- **Privacy & Legal (Healthcare / Sensitive Orgs):** Inform callers they are speaking to an AI receptionist; if recording is ever enabled, announce clear consent and define retention/deletion rules; keep medical diagnosis strictly prohibited; never use client transcripts for model training without written consent.
+- **Monitoring & Alerting:** Track Call Answer Rate, Call Failure Rate, TTFA/Tool Latency, Booking Success, Calendar Sync Failures, API Uptime, LiveKit Worker Status, SIP Audio Quality, and Daily AI/Telephony Spend (e.g., UptimeRobot / Better Stack + LiveKit Cloud Observability).
+- **Load & Rollback Testing:** Test peak concurrent calls, simultaneous booking on the same slot (atomic lock), worker restart recovery, and rollback to previous deployment version.
+
+### Phase 5: Controlled Production Go-Live
+1. Freeze approved `config/organization.json` and tag Git commit.
+2. Back up production DB → run `pnpm db:migrate` → `node scripts/org-cli.ts apply config/organization.json --confirm`.
+3. Upload production secrets to LiveKit Cloud (`lk agent update-secrets`) and Render; clear `WHATSAPP_TEST_RECIPIENT`.
+4. Deploy LiveKit agent (`lk agent deploy`), Render API, and Vercel frontend.
+5. Connect SIP Inbound Trunk + Dispatch Rule + organization phone number.
+6. Place external mobile test call → verify two-way audio, booking, Calendar, Email, WhatsApp, and Dashboard → switch to live traffic under close first-week monitoring.
+
+### Phase 6: Ongoing Operations & Maintenance
+- Weekly review of call logs, failed tool/sync alerts, monthly usage/cost report, backup verification, and controlled change requests whenever the organization updates services or policies.
+
+---
+
+## 3. Business Scale Criteria & Verified Production Costs
+
+> **Reference Rates (Verified Nov 2026 · USD/PKR ≈ 276.50 via SBP):**
+> - **LiveKit Cloud:** Build `$0/mo` (dev) · Ship from **`$50/mo`** · Scale from **`$500/mo`**
+> - **Gemini 3.1 Flash Live Preview:** `$0.005/min` input audio + `$0.018/min` output audio = **`~$0.023/min`** combined (pay-as-you-go; excludes taxes/tool tokens)
+> - **Render Compute:** Starter (512MB) **`$7/mo`** · Standard (1 CPU / 2GB) **`$25/mo`** per service
+> - **Neon PostgreSQL:** Usage-based paid compute/storage (budget `~$15–$25/mo` for small, `$40–$80/mo` for large — verify in Neon billing console)
+> - **Vercel:** Hobby `$0/mo` (non-commercial limits) · Pro **`$20/mo`** (commercial production)
+> - **Resend Email:** Free up to `3,000 emails/mo` (`$0`) · Pro **`$20/mo`** (`50,000 emails`)
+> - **WhatsApp Business Cloud API (Pakistan Rate Card):** Utility (booking confirmations/reminders) **`$0.015/delivered msg`** · Marketing `$0.0473/msg` · Service replies free within 1,000/mo quota
+> - **SIP Telephony:** Telnyx starting inbound `$0.0032/min` + `$1/mo` DID (US/EU); Twilio Pakistan outbound `$0.155–$0.180/min` (Pakistan local inbound DID / PTA SIP trunk requires a written carrier quote from PTCL / Nayatel / Wateen / SIP provider)
+
+### Clear Tier Comparison (What "Small", "Growing", and "Large" Mean)
+
+| Criteria | Tier 0: Free Testing / Demo | Tier 1: Small Production Business | Tier 2: Growing / Medium Business | Tier 3: Large / Enterprise |
+| :--- | :--- | :--- | :--- | :--- |
+| **Typical Organization** | FYP, Supervisor Demo, UAT | Single-doctor clinic, salon, small workshop | Multi-doctor medical center, busy auto center | Hospital chain, university, high-volume helpline |
+| **Call Volume** | 50 – 100 calls / mo | **300 – 500 calls / mo** (~10–20/day) | **1,500 – 2,000 calls / mo** (~50–70/day) | **6,000+ calls / mo** (200+/day) |
+| **Voice Minutes (3 min avg)** | 150 – 300 min | ~1,500 min / mo | ~6,000 min / mo | 18,000+ min / mo |
+| **Peak Concurrent Calls** | 1 – 2 | 1 – 2 | 3 – 5 | 10 – 50+ |
+| **LiveKit Plan** | Build ($0) | Ship ($50/mo) | Ship ($50/mo + overage) | Scale ($500+/mo) |
+| **Gemini Audio (~$0.023/min)** | $0 (Free dev tier) | ~$34.50 / mo | ~$138.00 / mo | ~$414+ / mo |
+| **Backend + DB + Frontend** | Render/Neon/Vercel Free ($0) | Render $7 + Neon ~$19 + Vercel $0–$20 | Render $25 + Neon ~$30 + Vercel $20 | Render $50+ + Neon $80+ + Vercel $20+ |
+| **WhatsApp Utility ($0.015/msg)** | $0 (Test recipient) | ~$7.50 (500 msgs) | ~$30.00 (2,000 msgs) | ~$90+ (6,000+ msgs) |
+| **SIP / Telephony** | $0 (Browser WebRTC) | ~$5 – $25/mo *(carrier-dependent)* | ~$20 – $90/mo *(carrier-dependent)* | Custom PTA SIP Trunk / multi-channel quote |
+| **Estimated Monthly Total** | **$0 / mo** | **~$125 – $165 / mo** *(~PKR 35k – 46k)* | **~$310 – $400 / mo** *(~PKR 86k – 110k)* | **$1,150+ / mo** *(~PKR 320k+)* |
+
+*Note: Estimates exclude domain renewal, local bank/FX taxes, Pakistan carrier call-forwarding fees, and support/maintenance labour.*
+
+---
+
+## 4. Connecting an Organization's Own Business Phone Number (SIP Trunking)
+
 ```text
-Caller (Mobile/Landline)
-  └──► Organization Phone Number (or Call Forwarding)
-         └──► SIP Provider (Twilio / Telnyx / Plivo / Local SIP Carrier)
+Caller (Mobile / Landline)
+  └──► Organization Business Number (Direct SIP or Carrier Call Forwarding)
+         └──► SIP Carrier (Twilio / Telnyx / PTCL / Nayatel / Wateen)
                 └──► LiveKit Cloud SIP Inbound Trunk
                        └──► LiveKit SIP Dispatch Rule (agentName: "ai-receptionist")
                               └──► VoxDesk AI Voice Agent (Gemini Live + Tools)
 ```
 
-### Option A: Connect a New Dedicated Phone Number (Twilio / Telnyx — Fastest)
-1. **Buy a Voice-Capable Number** in **Twilio** or **Telnyx** (supports SIP trunking; ~$1–$2/month).
-2. **Get your LiveKit SIP URI** from LiveKit Cloud Dashboard → **Settings → Project → SIP URI** (looks like `sip:<project-id>.sip.livekit.cloud`).
-3. **Create a LiveKit Inbound SIP Trunk** using the LiveKit CLI:
+### Option A: New Dedicated SIP Number (Twilio / Telnyx)
+1. Purchase a voice-capable DID number in Twilio or Telnyx.
+2. Copy your LiveKit Cloud **SIP URI** (`sip:<project-id>.sip.livekit.cloud`).
+3. Create the LiveKit Inbound Trunk & Dispatch Rule:
    ```bash
    lk sip inbound create --name "org-inbound-trunk" \
      --numbers "+1234567890" \
      --auth-user "sip_username" \
      --auth-pass "strong_sip_password"
-   ```
-4. **Create a LiveKit SIP Dispatch Rule** to automatically route every incoming call into a unique room and dispatch `ai-receptionist`:
-   ```bash
+
    lk sip dispatch create \
      --name "org-receptionist-dispatch" \
-     --trunk-ids "<ST_trunk_id_from_step_3>" \
+     --trunk-ids "<ST_trunk_id>" \
      --room-prefix "call-" \
      --agent-name "ai-receptionist"
    ```
-5. **Configure Twilio / Telnyx Origination URI:**
-   - In Twilio Elastic SIP Trunking (or Telnyx SIP Connection), set the **Origination SIP URI** to `sip:<project-id>.sip.livekit.cloud;transport=tls` and attach your purchased phone number.
-6. **Test:** Dial the number from any mobile phone — the AI receptionist answers within ~1–2 seconds!
+4. Point the Twilio/Telnyx Origination SIP URI to `sip:<project-id>.sip.livekit.cloud;transport=tls`.
+5. Place an external mobile test call and verify two-way audio + room creation + booking.
 
-### Option B: Connect an Organization's EXISTING Business Number (e.g., Pakistan Jazz/Zong/PTCL or Existing Landline)
-Organizations usually want to keep their **existing published phone number**. Two proven ways:
-
-1. **Method 1 — Call Forwarding (Zero Downtime, Works Everywhere Including Pakistan):**
-   - Provision a SIP DID number (via Twilio, Telnyx, or Zadarma) and link it to LiveKit SIP (Option A above).
-   - Enable **Call Forwarding** on the clinic's existing business mobile/PTCL landline to that SIP DID:
-     - **Unconditional (24/7 AI):** Dial `*21*<SIP_DID>#` (or configure in PBX/carrier portal).
-     - **No-Answer / Busy Fallback (Hybrid Human + AI):** Dial `*61*<SIP_DID>#` and `*67*<SIP_DID>#` — if human reception doesn't pick up within 3 rings, the AI receptionist answers automatically!
-2. **Method 2 — Direct Local SIP Trunk or Number Porting:**
-   - **US / UK / EU / UAE:** Port the existing business number directly into **Twilio** or **Telnyx** (takes 1–2 weeks) so it rings LiveKit SIP directly with zero forwarding leg.
-   - **Pakistan (Enterprise / Multi-Channel):** Request a **PTA-licensed SIP Trunk** from **PTCL**, **Nayatel**, or **Wateen** and point its SIP termination/origination to LiveKit Cloud's SIP URI (or a local SBC / Asterisk / FreeSWITCH bridge connected to LiveKit SIP).
+### Option B: Organization's Existing Business Number (Pakistan / International)
+- **Method 1 — Carrier Call Forwarding (Fastest, Zero Downtime):**
+  - Keep the clinic's existing Jazz / Zong / Ufone / PTCL number and forward calls (24/7 unconditional, or busy/no-answer after 3 rings) to the SIP DID connected to LiveKit.
+  - *Pakistan Caution:* Do **not** assume universal GSM forwarding codes (`*21*`, `*61*`, `*67*`) work identically on every carrier/landline. Always confirm exact activation/deactivation codes and per-minute forwarding charges directly with the organization's carrier in writing.
+- **Method 2 — Direct Local SIP Trunk or Porting:**
+  - **International (US/UK/EU/UAE):** Port the existing business number directly into Twilio/Telnyx.
+  - **Pakistan (Enterprise):** Obtain a **PTA-licensed SIP Trunk** (PTCL / Nayatel / Wateen) and connect it to LiveKit Cloud's Inbound SIP URI (or via a lightweight Asterisk/FreeSWITCH SBC).
 
 ---
 
-## 4. Production Cost Breakdown (Estimated)
+## 5. Client / End-User Guide (Non-Technical Handover)
 
-> *Note: Provider pricing changes periodically; figures below reflect typical 2025–2026 published pay-as-you-go rates in USD (approx. PKR at 1 USD ≈ 280 PKR).*
+Share these 7 steps with the organization owner/manager:
+1. **Share Organization Details:** Fill in business profile, hours, services, prices, FAQs, and escalation rules.
+2. **Review & Approve Preview:** Verify the AI greeting, tone, services, and booking policies before testing.
+3. **Authorize Accounts:** Provide secure access/keys for Google Calendar, Email sender, WhatsApp Business, and Phone routing.
+4. **Run UAT Test Calls:** Test booking, rescheduling, cancellation, and common customer questions with staff.
+5. **Sign Off for Go-Live:** Approve final config and launch date.
+6. **Daily Dashboard Use:** Log in to view live calls, linked bookings, Call Detail Drawer, CSV export, Reschedule/Cancel, and Knowledge Base updates.
+7. **Support & Change Requests:** Contact AiBitSol support for new integrations, carrier changes, or monthly usage reports.
 
-### Per-Component Pricing
+---
 
-| Service | Testing / Sandbox | Production Unit / Monthly Rate |
-| :--- | :--- | :--- |
-| **LiveKit Cloud** (WebRTC + Agent Hosting + SIP) | Free Build tier (limited monthly minutes) | **Ship: $50/mo** (includes generous quota) + ~$0.01/min overage |
-| **AI Voice Model (Gemini Live Native Audio)** | Free / Pay-as-you-go dev quota | **~$0.02 – $0.05 / minute** of live audio *(Alternative: Deepgram + GPT-4.1-mini + Cartesia ≈ ~$0.04 – $0.07 / min)* |
-| **Telephony / SIP Trunk (Twilio / Telnyx)** | $0 (WebRTC only) | Phone number: **$1–$2/mo** + Inbound voice: **$0.004–$0.014 / min** (Telnyx is cheaper; Twilio ~$0.0085–$0.014/min) |
-| **WhatsApp Business Cloud API (Meta)** | $0 (Test recipient) | **Utility template** (booking confirmation): **~$0.005 – $0.015 / message** (Pakistan Utility ≈ ~$0.0054/msg; 24h customer-initiated replies are **FREE**) |
-| **Email Confirmations (Resend / Gmail)** | $0 (Gmail SMTP / Resend Free) | **Resend Free:** up to 3,000 emails/mo ($0) · Pro: **$20/mo** (50k emails) |
-| **PostgreSQL Database (Neon)** | $0 (Free tier) | **Launch: ~$19/mo** (scales with compute/storage) |
-| **Backend API Hosting (Render)** | $0 (Free tier) | **Starter: $7/mo** (always-on, no cold start) |
-| **Frontend Dashboard (Vercel)** | $0 (Hobby) | **$0 (Hobby)** or **$20/mo (Pro)** for commercial team seats |
-| **Google Calendar API** | $0 | **$0** (free within generous Google Cloud quotas) |
+## 6. Final 30-Point Go-Live Sign-Off Checklist
 
-### Realistic Total Monthly Budget Estimates (3-Minute Average Call)
-
-| Deployment Scale | Monthly Calls | Voice Minutes | Estimated Monthly Total (USD) | Approx. PKR / Month |
-| :--- | :---: | :---: | :---: | :---: |
-| **Testing / FYP Demo** (WebRTC, Free tiers) | ~50 – 100 | 150 – 300 min | **$0 – $5 / mo** | ~PKR 0 – 1,500 |
-| **Small Clinic / Business** (Live SIP + WhatsApp + Always-on API) | 500 calls | 1,500 min | **$95 – $145 / mo** *(~$0.19–$0.29 / call)* | ~PKR 27,000 – 40,000 |
-| **Busy Clinic / Growing Business** | 2,000 calls | 6,000 min | **$220 – $360 / mo** *(~$0.11–$0.18 / call)* | ~PKR 62,000 – 100,000 |
-
-> **ROI Context:** Even at 2,000 calls/month (~$250/mo), the AI receptionist handles 24/7 inbound calling, instant booking, Calendar sync, Email, and WhatsApp at a fraction of the cost of a single full-time reception shift — with zero missed calls and zero double-bookings.
+- **Dev & Staging (5):** Typecheck/tests pass · Frontend build passes · `org:validate` passes · Staging DB/secrets isolated · End-to-end test call passes.
+- **Client Approval (5):** Profile & prices approved · Greeting & languages approved · Booking/cancel rules approved · UAT scenarios passed · Written sign-off recorded.
+- **Production Infra (5):** Paid always-on API & DB · Migrations run after backup · Backup restore tested · All secrets rotated & stored securely · Custom HTTPS domain & DNS verified.
+- **Telephony & Integrations (5):** Production SIP trunk & dispatch rule tested · Two-way audio verified · Carrier fallback routing tested · Production Google Calendar & Email verified · Meta WhatsApp Business & Utility templates approved (`WHATSAPP_TEST_RECIPIENT` cleared).
+- **Security & Ops (5):** Default demo login removed & RBAC verified · Privacy/AI notice approved · Monitoring & cost alerts active · Concurrent load & worker restart tested · Rollback & incident contact documented.
+- **Launch & Handover (5):** Production smoke test passed · Client go-live approval recorded · Dashboard access delivered · Client guide & support contact delivered · First-week monitoring owner assigned.
