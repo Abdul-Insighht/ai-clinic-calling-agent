@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1.0",
+  "organization": {
+    "name": "Your Organization Name",
+    "type": "general_service",
+    "description": "Concise 1-2 sentence overview of your organization and core services.",
+    "location": "Main Street Address, City",
+    "timezone": "Asia/Karachi",
+    "contactPhone": "+923001234567",
+    "contactEmail": "info@example.com",
+    "website": "",
+    "serviceAreas": ["Main Branch", "Downtown Area"]
+  },
+  "businessHours": {
+    "monday": "9 AM to 6 PM",
+    "tuesday": "9 AM to 6 PM",
+    "wednesday": "9 AM to 6 PM",
+    "thursday": "9 AM to 6 PM",
+    "friday": "9 AM to 6 PM",
+    "saturday": "9 AM to 2 PM",
+    "sunday": "Closed",
+    "holidays": [],
+    "afterHoursBehavior": "book_next_available"
+  },
+  "services": [
+    {
+      "id": "svc_primary",
+      "name": "Primary Consultation or Service",
+      "description": "Brief description of what this service includes.",
+      "category": "General",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Confirmed by our team upon evaluation",
+      "isActive": true,
+      "intakeQuestions": [
+        "What specific need or request brings you to us today?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"],
+      "rules": {
+        "eligibility": "Open to all new and returning callers",
+        "requirements": [],
+        "restrictions": []
+      }
+    }
+  ],
+  "staff": [],
+  "availability": {
+    "defaultDurationMinutes": 60,
+    "breaks": [],
+    "blockedDates": []
+  },
+  "bookingRules": {
+    "allowBooking": true,
+    "allowReschedule": true,
+    "allowCancel": true,
+    "allowLeadCapture": true,
+    "minAdvanceNoticeMinutes": 30,
+    "requireReadbackConfirmation": true
+  },
+  "faqs": [
+    {
+      "question": "Where are you located?",
+      "answer": "We are located at Main Street Address, City.",
+      "category": "location"
+    }
+  ],
+  "customerInfo": {
+    "callerLabel": "Client",
+    "locationLabel": "Location",
+    "bookingUnit": "Appointment",
+    "fulfillmentMode": "in_person",
+    "askCallerAddress": false,
+    "requiredFields": ["fullName", "phone", "email"]
+  },
+  "escalationRules": {
+    "emergencyPolicy": "For urgent or unsafe situations, instruct the caller to contact local emergency services or our front desk immediately.",
+    "pricingPolicy": "Do not invent prices. Share only configured prices or state that final fees are confirmed by our team.",
+    "humanTransferTriggers": [
+      "Caller explicitly requests a human representative",
+      "Billing dispute or complaint"
+    ],
+    "transferPhone": "",
+    "acceptedPaymentMethods": ["Cash", "Card", "Bank Transfer"]
+  },
+  "communication": {
+    "emailConfirmation": true,
+    "whatsappConfirmation": true,
+    "phoneCallback": true
+  },
+  "aiInstructions": {
+    "assistantName": "Sarah",
+    "voice": "Puck",
+    "tone": "warm, concise, and professional",
+    "languages": ["English"],
+    "defaultLanguage": "English",
+    "greeting": "Thank you for calling Your Organization Name! This is Sarah, how can I help you today?",
+    "prohibitedClaims": [
+      "Never invent unlisted services, unverified prices, or unauthorized guarantees."
+    ]
+  }
+}

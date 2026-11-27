@@ -1,0 +1,180 @@
+{
+  "schemaVersion": "1.0",
+  "organization": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "CareFirst Medical Clinic",
+    "type": "medical_clinic",
+    "description": "CareFirst Medical Clinic provides walk-in visits, general medical consultations, blood pressure and diabetes care, pediatric checkups, lab work, and prescription renewals.",
+    "location": "Main Medical Plaza, City Center",
+    "timezone": "Asia/Karachi",
+    "contactPhone": "",
+    "contactEmail": "",
+    "website": "https://voxdesk.abdulrehmanai.tech",
+    "serviceAreas": [
+      "Downtown Urgent Care",
+      "Eastview Medical Center",
+      "Main Medical Plaza",
+      "Northside Health Wing",
+      "Southpark Outpatient Care",
+      "Westgate Family Clinic"
+    ]
+  },
+  "businessHours": {
+    "monday": "9 AM to 6 PM",
+    "tuesday": "9 AM to 6 PM",
+    "wednesday": "9 AM to 6 PM",
+    "thursday": "9 AM to 6 PM",
+    "friday": "9 AM to 6 PM",
+    "saturday": "9 AM to 2 PM",
+    "sunday": "Closed",
+    "holidays": [],
+    "afterHoursBehavior": "book_next_available"
+  },
+  "services": [
+    {
+      "id": "svc_general",
+      "name": "General Medical Consultation",
+      "description": "Comprehensive physician consultation for everyday health concerns.",
+      "category": "Consultation",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Standard consultation fee confirmed at reception",
+      "isActive": true,
+      "intakeQuestions": [
+        "What symptoms or health concern would you like the doctor to evaluate?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"]
+    },
+    {
+      "id": "svc_diabetes",
+      "name": "Diabetes Care & Blood Sugar Checkup",
+      "description": "Routine diabetes management, blood glucose review, and follow-up.",
+      "category": "Chronic Care",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Confirmed at reception",
+      "isActive": true,
+      "intakeQuestions": [
+        "Is this a routine follow-up or are you experiencing unusual blood sugar readings?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"]
+    },
+    {
+      "id": "svc_bp",
+      "name": "Hypertension & Blood Pressure Follow-Up",
+      "description": "Blood pressure monitoring and medication review.",
+      "category": "Chronic Care",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Confirmed at reception",
+      "isActive": true,
+      "intakeQuestions": [
+        "Are you coming in for a routine BP check or medication adjustment?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"]
+    },
+    {
+      "id": "svc_lab",
+      "name": "Lab Work & Prescription Renewal",
+      "description": "Diagnostic lab tests and prescription refill reviews.",
+      "category": "Diagnostics",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Depends on lab tests requested",
+      "isActive": true,
+      "intakeQuestions": [
+        "Do you need lab work, a prescription renewal, or both?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"]
+    },
+    {
+      "id": "svc_pediatric",
+      "name": "Pediatric & Child Health Checkup",
+      "description": "Routine child wellness exams and pediatric visits.",
+      "category": "Pediatrics",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Confirmed at reception",
+      "isActive": true,
+      "intakeQuestions": [
+        "How old is your child and what brings them in today?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"]
+    },
+    {
+      "id": "svc_urgent",
+      "name": "Urgent Walk-In Assessment",
+      "description": "Same-day assessment for non-life-threatening urgent symptoms.",
+      "category": "Urgent Care",
+      "bookingType": "appointment",
+      "durationMinutes": 60,
+      "priceDisplay": "Confirmed at reception",
+      "isActive": true,
+      "intakeQuestions": [
+        "What urgent symptoms are you experiencing right now?"
+      ],
+      "requiredCallerFields": ["fullName", "phone", "email"]
+    }
+  ],
+  "staff": [],
+  "availability": {
+    "defaultDurationMinutes": 60,
+    "breaks": [],
+    "blockedDates": []
+  },
+  "bookingRules": {
+    "allowBooking": true,
+    "allowReschedule": true,
+    "allowCancel": true,
+    "allowLeadCapture": true,
+    "minAdvanceNoticeMinutes": 30,
+    "requireReadbackConfirmation": true
+  },
+  "faqs": [
+    {
+      "question": "Where is the clinic located?",
+      "answer": "CareFirst Medical Clinic is located at Main Medical Plaza, City Center.",
+      "category": "location"
+    },
+    {
+      "question": "Do you accept walk-in patients?",
+      "answer": "Yes, we offer Urgent Walk-In Assessments during operating hours, or you can book a scheduled slot.",
+      "category": "visits"
+    }
+  ],
+  "customerInfo": {
+    "callerLabel": "Patient",
+    "locationLabel": "Clinic Location",
+    "bookingUnit": "Appointment",
+    "fulfillmentMode": "in_person",
+    "askCallerAddress": false,
+    "requiredFields": ["fullName", "phone", "email"]
+  },
+  "escalationRules": {
+    "emergencyPolicy": "For medical emergencies such as severe chest pain, difficulty breathing, heavy bleeding, or loss of consciousness, instruct the caller to hang up and call local emergency services or go to the nearest emergency room immediately. Never provide medical diagnoses.",
+    "pricingPolicy": "Do not invent treatment prices. Explain that standard consultation fees are confirmed at reception and final costs depend on the doctor evaluation and any lab tests needed.",
+    "humanTransferTriggers": [
+      "Caller reports a medical emergency",
+      "Caller requests to speak directly with clinic reception"
+    ],
+    "transferPhone": "",
+    "acceptedPaymentMethods": ["Cash", "Card"]
+  },
+  "communication": {
+    "emailConfirmation": true,
+    "whatsappConfirmation": true,
+    "phoneCallback": true
+  },
+  "aiInstructions": {
+    "assistantName": "Sarah",
+    "voice": "Puck",
+    "tone": "warm, empathetic, concise, and professional",
+    "languages": ["English"],
+    "defaultLanguage": "English",
+    "greeting": "Thank you for calling CareFirst Medical Clinic! This is Sarah, how can I help you today?",
+    "prohibitedClaims": [
+      "Never provide medical diagnoses or prescribe medication.",
+      "Never invent treatment prices or unlisted services."
+    ]
+  }
+}
